@@ -213,28 +213,4 @@ class CursorPaster {
         try? await Task.sleep(nanoseconds: nanoseconds)
     }
 
-    // MARK: - Auto Send Keys
-
-    static func performAutoSend(_ key: AutoSendKey) {
-        guard key.isEnabled else { return }
-        guard AXIsProcessTrusted() else { return }
-
-        let source = CGEventSource(stateID: .privateState)
-        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)
-        let enterUp   = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
-
-        switch key {
-        case .none: return
-        case .enter: break
-        case .shiftEnter:
-            enterDown?.flags = .maskShift
-            enterUp?.flags   = .maskShift
-        case .commandEnter:
-            enterDown?.flags = .maskCommand
-            enterUp?.flags   = .maskCommand
-        }
-
-        enterDown?.post(tap: .cghidEventTap)
-        enterUp?.post(tap: .cghidEventTap)
-    }
 }

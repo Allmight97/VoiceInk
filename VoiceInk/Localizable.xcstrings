@@ -1943,23 +1943,6 @@
         }
       }
     },
-    "Add a custom fine-tuned whisper model to use with VoiceInk. Select the downloaded .bin file." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein eigenes, feinjustiertes Whisper-Modell für VoiceInk hinzufügen. Wähle die heruntergeladene .bin-Datei aus."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加自定微调的 whisper 模型以在 VoiceInk 中使用。请选择已下载的 .bin 文件。"
-          }
-        }
-      }
-    },
     "Add a new mode" : {
       "localizations" : {
         "de" : {
@@ -3344,39 +3327,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "问一些简单的问题，VoiceInk 会为你解答。"
-          }
-        }
-      }
-    },
-    "Assistant" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Assistent"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "助手"
-          }
-        }
-      }
-    },
-    "Assistant response was not saved: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Assistentenantwort wurde nicht gespeichert: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "助手回复未存储：%@"
           }
         }
       }
@@ -14184,22 +14134,6 @@
         }
       }
     },
-    "Select a Whisper ggml .bin model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Whisper-ggml-.bin-Modell auswählen"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择 Whisper ggml .bin 模型"
-          }
-        }
-      }
-    },
     "Select All" : {
       "localizations" : {
         "de" : {
@@ -17930,22 +17864,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "VoiceInk 模式"
-          }
-        }
-      }
-    },
-    "VoiceInk modes include Dictation, Enhance, Email, Assistant, Rewrite, Ask, Summarize, and Translate." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VoiceInk-Modi umfassen Diktat, Verbesserung, E-Mail, Assistent, Umschreiben, Fragen, Zusammenfassen und Übersetzen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VoiceInk 的模式包括听写、润色、邮件、助手、改写、提问、总结和翻译。"
           }
         }
       }

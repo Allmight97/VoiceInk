@@ -33,13 +33,9 @@ enum ShortcutStore {
            let data = try? JSONEncoder().encode(shortcut) {
             UserDefaults.standard.set(data, forKey: action.userDefaultsKey)
             UserDefaults.standard.removeObject(forKey: clearedUserDefaultsKey(for: action))
-            ShortcutMigration.removeLegacyCustomRecordingShortcut(for: action)
-            ShortcutMigration.removeLegacyKeyboardShortcut(for: action)
         } else {
             UserDefaults.standard.removeObject(forKey: action.userDefaultsKey)
             UserDefaults.standard.set(true, forKey: clearedUserDefaultsKey(for: action))
-            ShortcutMigration.removeLegacyCustomRecordingShortcut(for: action)
-            ShortcutMigration.removeLegacyKeyboardShortcut(for: action)
         }
 
         NotificationCenter.default.post(
@@ -69,8 +65,6 @@ enum ShortcutStore {
 
         UserDefaults.standard.removeObject(forKey: action.userDefaultsKey)
         UserDefaults.standard.removeObject(forKey: clearedUserDefaultsKey(for: action))
-        ShortcutMigration.removeLegacyCustomRecordingShortcut(for: action)
-        ShortcutMigration.removeLegacyKeyboardShortcut(for: action)
         NotificationCenter.default.post(
             name: shortcutDidChange,
             object: action
@@ -85,12 +79,12 @@ enum ShortcutStore {
         }
     }
 
-    private static func shortcutData(for action: ShortcutAction) -> Data? {
-        UserDefaults.standard.data(forKey: action.userDefaultsKey)
-    }
-
     static func isShortcutCleared(for action: ShortcutAction) -> Bool {
         UserDefaults.standard.bool(forKey: clearedUserDefaultsKey(for: action))
+    }
+
+    private static func shortcutData(for action: ShortcutAction) -> Data? {
+        UserDefaults.standard.data(forKey: action.userDefaultsKey)
     }
 
     private static func clearedUserDefaultsKey(for action: ShortcutAction) -> String {

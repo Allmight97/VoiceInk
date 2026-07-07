@@ -11,17 +11,11 @@ class Recorder: NSObject, ObservableObject {
     private var deviceSwitchObserver: NSObjectProtocol?
     private var audioDeviceChangedObserver: NSObjectProtocol?
     private var isReconfiguring = false
-    private let mediaController = MediaController.shared
-    private let playbackController = PlaybackController.shared
     @Published var audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
     private var audioMeterUpdateTimer: DispatchSourceTimer?
     private let audioMeterQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audiometer", qos: .userInteractive)
     /// Dedicated serial queue for hardware setup.
     private let audioSetupQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audioSetup", qos: .userInitiated)
-    private let recordingAudioActionDelayNanoseconds: UInt64 = 220_000_000
-    private var audioMuteTask: Task<Void, Never>?
-    private var mediaPauseTask: Task<Void, Never>?
-    private var audioRestorationTask: Task<Void, Never>?
     private let smoothedValuesLock = NSLock()
     private var smoothedAverage: Float = 0
     private var smoothedPeak: Float = 0
@@ -131,11 +125,7 @@ class Recorder: NSObject, ObservableObject {
 
         let deviceID = currentDeviceID
 
-        audioRestorationTask?.cancel()
-        audioRestorationTask = nil
         audioMeterUpdateTimer?.cancel()
-        pauseMedia()
-        muteSystemAudio()
 
         let coreAudioRecorder = recorder ?? CoreAudioRecorder()
         coreAudioRecorder.onAudioChunk = onAudioChunk
@@ -163,10 +153,6 @@ class Recorder: NSObject, ObservableObject {
     }
 
     func stopRecording() async {
-        audioMuteTask?.cancel()
-        audioMuteTask = nil
-        mediaPauseTask?.cancel()
-        mediaPauseTask = nil
         audioMeterUpdateTimer?.cancel()
         audioMeterUpdateTimer = nil
 
@@ -187,31 +173,7 @@ class Recorder: NSObject, ObservableObject {
         smoothedValuesLock.unlock()
 
         audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
-
-        audioRestorationTask?.cancel()
-        audioRestorationTask = Task {
-            await mediaController.unmuteSystemAudio()
-            await playbackController.resumeMedia()
-        }
         deviceManager.isRecordingActive = false
-    }
-
-    private func muteSystemAudio() {
-        audioMuteTask?.cancel()
-        audioMuteTask = Task { [weak self] in
-            guard let self else { return }
-            try? await Task.sleep(nanoseconds: self.recordingAudioActionDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            _ = await self.mediaController.muteSystemAudio()
-        }
-    }
-
-    private func pauseMedia() {
-        mediaPauseTask?.cancel()
-        mediaPauseTask = Task { [weak self] in
-            guard let self else { return }
-            await self.playbackController.pauseMedia()
-        }
     }
 
     private func handleRecordingError(_ error: Error) async {
@@ -309,10 +271,7 @@ class Recorder: NSObject, ObservableObject {
     // MARK: - Cleanup
 
     deinit {
-        audioMuteTask?.cancel()
-        mediaPauseTask?.cancel()
         audioMeterUpdateTimer?.cancel()
-        audioRestorationTask?.cancel()
         if let observer = deviceSwitchObserver {
             NotificationCenter.default.removeObserver(observer)
         }

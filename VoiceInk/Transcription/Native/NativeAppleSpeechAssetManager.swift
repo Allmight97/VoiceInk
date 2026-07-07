@@ -128,8 +128,7 @@ enum NativeAppleSpeechAssetManager {
     }
 
     static func languageDisplayName(for localeIdentifier: String) -> String {
-        LanguageDictionary.appleNative[localeIdentifier]
-            ?? Locale.current.localizedString(forIdentifier: localeIdentifier)
+        Locale.current.localizedString(forIdentifier: localeIdentifier)
             ?? localeIdentifier
     }
 
