@@ -38,7 +38,7 @@ build: check
 local: check
 	@echo "Building VoiceInk for local use (no Apple Developer certificate required)..."
 	@rm -rf "$(LOCAL_DERIVED_DATA)"
-	xcodebuild -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug \
+	xcodebuild -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Release \
 		-derivedDataPath "$(LOCAL_DERIVED_DATA)" \
 		-xcconfig LocalBuild.xcconfig \
 		CODE_SIGN_IDENTITY="$(LOCAL_SIGN_IDENTITY)" \
@@ -48,7 +48,7 @@ local: check
 		CODE_SIGN_ENTITLEMENTS="$(CURDIR)/VoiceInk/VoiceInk.local.entitlements" \
 		SWIFT_ACTIVE_COMPILATION_CONDITIONS='$$(inherited) LOCAL_BUILD' \
 		build
-	@APP_PATH="$(LOCAL_DERIVED_DATA)/Build/Products/Debug/VoiceInk.app" && \
+	@APP_PATH="$(LOCAL_DERIVED_DATA)/Build/Products/Release/VoiceInk.app" && \
 	if [ -d "$$APP_PATH" ]; then \
 		echo "Copying VoiceInk.app to ~/Downloads..."; \
 		rm -rf "$$HOME/Downloads/VoiceInk.app"; \
@@ -81,7 +81,7 @@ archive-stock:
 install: local
 	-@osascript -e 'tell application "VoiceInk" to quit' 2>/dev/null; sleep 2
 	@rm -rf /Applications/VoiceInk.app
-	@ditto "$(LOCAL_DERIVED_DATA)/Build/Products/Debug/VoiceInk.app" /Applications/VoiceInk.app
+	@ditto "$(LOCAL_DERIVED_DATA)/Build/Products/Release/VoiceInk.app" /Applications/VoiceInk.app
 	@xattr -cr /Applications/VoiceInk.app
 	@echo "Installed /Applications/VoiceInk.app"
 	@open /Applications/VoiceInk.app
