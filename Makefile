@@ -4,7 +4,20 @@ WHISPER_CPP_DIR := $(DEPS_DIR)/whisper.cpp
 FRAMEWORK_PATH := $(WHISPER_CPP_DIR)/build-apple/whisper.xcframework
 LOCAL_DERIVED_DATA := $(CURDIR)/.local-build
 
-.PHONY: all clean whisper setup build local check healthcheck help dev run
+# Stable local signing identity so TCC permission grants survive rebuilds.
+# Created once via: openssl self-signed cert imported to the login keychain.
+LOCAL_SIGN_IDENTITY := VoiceInk Local
+
+# If xcode-select points at CommandLineTools, fall back to Xcode(-beta).app
+ifneq ($(shell xcodebuild -version >/dev/null 2>&1 && echo ok),ok)
+  ifneq ($(wildcard /Applications/Xcode-beta.app),)
+    export DEVELOPER_DIR := /Applications/Xcode-beta.app/Contents/Developer
+  else ifneq ($(wildcard /Applications/Xcode.app),)
+    export DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
+  endif
+endif
+
+.PHONY: all clean whisper setup build local check healthcheck help dev run install archive-stock
 
 # Default target
 all: check build
@@ -51,7 +64,7 @@ local: check setup
 	xcodebuild -project VoiceInk.xcodeproj -scheme VoiceInk -configuration Debug \
 		-derivedDataPath "$(LOCAL_DERIVED_DATA)" \
 		-xcconfig LocalBuild.xcconfig \
-		CODE_SIGN_IDENTITY="-" \
+		CODE_SIGN_IDENTITY="$(LOCAL_SIGN_IDENTITY)" \
 		CODE_SIGNING_REQUIRED=NO \
 		CODE_SIGNING_ALLOWED=YES \
 		DEVELOPMENT_TEAM="" \
@@ -75,6 +88,26 @@ local: check setup
 		echo "Error: Could not find built VoiceInk.app at $$APP_PATH"; \
 		exit 1; \
 	fi
+
+# One-time backup of whatever is currently installed in /Applications
+archive-stock:
+	@if [ -d "/Applications/VoiceInk.app" ]; then \
+		V=$$(defaults read /Applications/VoiceInk.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo unknown); \
+		OUT="$$HOME/Downloads/VoiceInk-$$V-backup.zip"; \
+		ditto -c -k --keepParent /Applications/VoiceInk.app "$$OUT"; \
+		echo "Archived /Applications/VoiceInk.app -> $$OUT"; \
+	else \
+		echo "No /Applications/VoiceInk.app to archive"; \
+	fi
+
+# Build and install into /Applications (quits any running copy first)
+install: local
+	-@osascript -e 'tell application "VoiceInk" to quit' 2>/dev/null; sleep 2
+	@rm -rf /Applications/VoiceInk.app
+	@ditto "$(LOCAL_DERIVED_DATA)/Build/Products/Debug/VoiceInk.app" /Applications/VoiceInk.app
+	@xattr -cr /Applications/VoiceInk.app
+	@echo "Installed /Applications/VoiceInk.app"
+	@open /Applications/VoiceInk.app
 
 # Run application
 run:
