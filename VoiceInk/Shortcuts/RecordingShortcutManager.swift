@@ -87,17 +87,17 @@ final class RecordingShortcutManager: ObservableObject {
             shortcuts: [.primaryRecording: shortcut],
             interruptibleActions: [.primaryRecording],
             onKeyDown: { [weak self] _, _ in
-                Task { @MainActor in
+                Task(priority: .userInitiated) { @MainActor in
                     await self?.handleKeyDown()
                 }
             },
             onKeyUp: { [weak self] _, _ in
-                Task { @MainActor in
+                Task(priority: .userInitiated) { @MainActor in
                     await self?.handleKeyUp()
                 }
             },
             onShortcutInterrupted: { [weak self] _, _ in
-                Task { @MainActor in
+                Task(priority: .userInitiated) { @MainActor in
                     await self?.engine?.cancelRecording()
                 }
             }

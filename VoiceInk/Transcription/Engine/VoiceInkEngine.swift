@@ -19,7 +19,14 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     private let recordingsDirectory: URL
     private var recordedFile: URL?
     private var activeRecordingID: UUID?
+    private var sampleBuffer: RecordingSampleBuffer?
+    private var idleUnloadWorkItem: DispatchWorkItem?
+    private var recordInterval: OSSignpostIntervalState?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "VoiceInkEngine")
+
+    private var keepRecordings: Bool {
+        UserDefaults.standard.bool(forKey: "DebugKeepRecordings")
+    }
 
     init(
         recorder: Recorder,
@@ -66,6 +73,10 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         shouldCancelRecording = true
         activeRecordingID = nil
         await recorder.stopRecording()
+        endRecordIntervalIfNeeded()
+        sampleBuffer?.discard()
+        sampleBuffer = nil
+        removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         partialTranscript = ""
         recordingState = .idle
@@ -77,8 +88,19 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         activeRecordingID = nil
         partialTranscript = ""
         await recorder.stopRecording()
+        endRecordIntervalIfNeeded()
+        sampleBuffer?.discard()
+        sampleBuffer = nil
+        removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         recordingState = .idle
+    }
+
+    private func endRecordIntervalIfNeeded() {
+        if let recordInterval {
+            LeanSignpost.signposter.endInterval("record", recordInterval)
+            self.recordInterval = nil
+        }
     }
 
     private func startRecording() async {
@@ -90,12 +112,20 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
         shouldCancelRecording = false
         partialTranscript = ""
+        idleUnloadWorkItem?.cancel()
+        idleUnloadWorkItem = nil
         let recordingID = UUID()
         activeRecordingID = recordingID
 
         let fileURL = recordingsDirectory.appendingPathComponent("\(recordingID.uuidString).wav")
         recordedFile = fileURL
         recordingState = .starting
+
+        let buffer = RecordingSampleBuffer()
+        sampleBuffer = buffer
+        recorder.onAudioChunk = { chunk in
+            buffer.append(chunk)
+        }
 
         do {
             try await recorder.startRecording(toOutputFile: fileURL)
@@ -105,8 +135,9 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                 return
             }
             recordingState = .recording
+            recordInterval = LeanSignpost.signposter.beginInterval("record")
 
-            Task { @MainActor [weak self] in
+            Task(priority: .userInitiated) { @MainActor [weak self] in
                 await self?.warmCurrentModelIfPossible()
             }
         } catch {
@@ -127,17 +158,40 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         partialTranscript = ""
         recordingState = .transcribing
         await recorder.stopRecording()
+        if let recordInterval {
+            LeanSignpost.signposter.endInterval("record", recordInterval)
+            self.recordInterval = nil
+        }
 
-        guard let audioURL = recordedFile, recordingID != nil, !shouldCancelRecording else {
-            recordedFile = nil
+        let buffer = sampleBuffer
+        sampleBuffer = nil
+        let audioURL = recordedFile
+        recordedFile = nil
+        defer { removeRecordingUnlessKept(audioURL) }
+
+        guard recordingID != nil, !shouldCancelRecording else {
+            buffer?.discard()
             recordingState = .idle
             await recorderUIManager?.dismissRecorderPanel()
             return
         }
 
+        if buffer?.overflowed == true {
+            NotificationManager.shared.showNotification(
+                title: String(localized: "Recording exceeded 30 minutes; extra audio was dropped"),
+                type: .warning
+            )
+        }
+
         do {
+            var samples = buffer?.takeFloatSamples() ?? []
+            if samples.isEmpty, let audioURL {
+                logger.warning("In-memory buffer empty; falling back to recorded file")
+                samples = try WAVEncoder.readSamples(from: audioURL)
+            }
+
             try await pipeline.run(
-                audioURL: audioURL,
+                samples: samples,
                 model: model,
                 shouldCancel: { [weak self] in self?.shouldCancelRecording ?? true },
                 onDismiss: { [weak self] in
@@ -145,6 +199,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                 }
             )
             isCurrentModelLoaded = serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
+            scheduleIdleUnloadIfEnabled()
         } catch {
             logger.error("Transcription failed: \(error, privacy: .public)")
             StartStopSound.playStop()
@@ -155,10 +210,40 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             await recorderUIManager?.dismissRecorderPanel()
         }
 
-        recordedFile = nil
         shouldCancelRecording = false
         if recordingState == .transcribing {
             recordingState = .idle
+        }
+    }
+
+    /// Opt-in: release model memory after N idle minutes (0 = keep resident).
+    /// Nothing is scheduled at the default, preserving the zero-idle-timers invariant.
+    private func scheduleIdleUnloadIfEnabled() {
+        idleUnloadWorkItem?.cancel()
+        idleUnloadWorkItem = nil
+
+        let minutes = UserDefaults.standard.integer(forKey: "UnloadModelAfterIdleMinutes")
+        guard minutes > 0 else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.recordingState == .idle else { return }
+                await self.serviceRegistry.cleanup()
+                self.isCurrentModelLoaded = false
+                self.logger.notice("Unloaded model after \(minutes, privacy: .public) idle minutes")
+            }
+        }
+        idleUnloadWorkItem = workItem
+        DispatchQueue.global(qos: .utility).asyncAfter(
+            deadline: .now() + .seconds(minutes * 60),
+            execute: workItem
+        )
+    }
+
+    private func removeRecordingUnlessKept(_ url: URL?) {
+        guard let url, !keepRecordings else { return }
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

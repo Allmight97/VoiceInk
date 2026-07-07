@@ -50,13 +50,17 @@ final class FluidAudioTranscriptionService: TranscriptionService {
     }
 
     func transcribe(audioURL: URL, model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
+        try await transcribe(samples: readAudioSamples(from: audioURL), model: model, context: context)
+    }
+
+    func transcribe(samples: [Float], model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
         try await ensureModelsLoaded(for: .v2)
 
         guard let asrManager else {
             throw ASRError.notInitialized
         }
 
-        var speechAudio = try readAudioSamples(from: audioURL)
+        var speechAudio = samples
         let trailingSilenceSamples = 16_000
         let maxSingleChunkSamples = 240_000
         if speechAudio.count + trailingSilenceSamples <= maxSingleChunkSamples {

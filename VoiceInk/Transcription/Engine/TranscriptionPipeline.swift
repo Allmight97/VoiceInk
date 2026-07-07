@@ -13,18 +13,20 @@ final class TranscriptionPipeline {
     }
 
     func run(
-        audioURL: URL,
+        samples: [Float],
         model: any TranscriptionModel,
         shouldCancel: () -> Bool,
         onDismiss: @escaping () async -> Void
     ) async throws {
         if shouldCancel() { return }
 
+        let transcribeInterval = LeanSignpost.signposter.beginInterval("transcribe")
         var text = try await serviceRegistry.transcribe(
-            audioURL: audioURL,
+            samples: samples,
             model: model,
             context: .leanDefault
         )
+        LeanSignpost.signposter.endInterval("transcribe", transcribeInterval)
         if shouldCancel() { return }
 
         text = TranscriptionOutputFilter.filter(text)

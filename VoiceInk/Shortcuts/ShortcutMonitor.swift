@@ -100,7 +100,7 @@ final class ShortcutMonitor {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: Self.eventMask,
+            eventsOfInterest: minimalEventMask(),
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -330,12 +330,21 @@ final class ShortcutMonitor {
         }
     }
 
-    private static let eventMask: CGEventMask = [
-        CGEventType.keyDown,
-        CGEventType.keyUp,
-        CGEventType.flagsChanged
-    ].reduce(CGEventMask(0)) { mask, type in
-        mask | (CGEventMask(1) << Int(type.rawValue))
+    /// Only subscribe to the event types the registered shortcuts can match:
+    /// modifier-only shortcuts need just flagsChanged; key shortcuts need
+    /// keyDown + keyUp (release drives push-to-talk and state reset).
+    private func minimalEventMask() -> CGEventMask {
+        var types: [CGEventType] = []
+        let kinds = Set(shortcuts.values.map(\.shortcut.kind))
+        if kinds.contains(.key) {
+            types.append(contentsOf: [.keyDown, .keyUp])
+        }
+        if kinds.contains(.modifierOnly) {
+            types.append(.flagsChanged)
+        }
+        return types.reduce(CGEventMask(0)) { mask, type in
+            mask | (CGEventMask(1) << Int(type.rawValue))
+        }
     }
 }
 

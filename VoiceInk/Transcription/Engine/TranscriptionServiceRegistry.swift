@@ -30,6 +30,16 @@ final class TranscriptionServiceRegistry {
         return try await service.transcribe(audioURL: audioURL, model: model, context: context)
     }
 
+    func transcribe(
+        samples: [Float],
+        model: any TranscriptionModel,
+        context: TranscriptionRequestContext = .leanDefault
+    ) async throws -> String {
+        let service = service(for: model.provider)
+        logger.debug("Transcribing \(samples.count, privacy: .public) samples with \(model.displayName, privacy: .public)")
+        return try await service.transcribe(samples: samples, model: model, context: context)
+    }
+
     func cleanup() async {
         await fluidAudioTranscriptionService.cleanup()
     }
