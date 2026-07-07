@@ -44,33 +44,3 @@ struct ClipboardManager {
     }
 }
 
-struct ClipboardMessageModifier: ViewModifier {
-    @Binding var message: String
-    
-    func body(content: Content) -> some View {
-        content
-            .overlay(
-                Group {
-                    if !message.isEmpty {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundColor(AppTheme.Status.positive)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.Status.positive.opacity(0.10))
-                            .cornerRadius(4)
-                            .transition(.opacity)
-                            .animation(.easeInOut, value: message)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding()
-            )
-    }
-}
-
-extension View {
-    func clipboardMessage(_ message: Binding<String>) -> some View {
-        self.modifier(ClipboardMessageModifier(message: message))
-    }
-}
