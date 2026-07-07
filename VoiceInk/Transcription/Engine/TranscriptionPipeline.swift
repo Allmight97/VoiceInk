@@ -43,5 +43,6 @@ final class TranscriptionPipeline {
             text: text,
             actions: TranscriptionDelivery.Actions(dismiss: onDismiss)
         )
+        TranscriptionLog.append(text: text)
     }
 }

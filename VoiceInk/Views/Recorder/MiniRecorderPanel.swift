@@ -43,7 +43,14 @@ class MiniRecorderPanel: NSPanel {
         let visibleFrame = screen.visibleFrame
         let centerX = visibleFrame.midX
         let xPosition = centerX - (width / 2)
-        let yPosition = visibleFrame.minY + padding
+
+        let yPosition: CGFloat
+        switch RecorderPanelPosition.current {
+        case .bottomCenter:
+            yPosition = visibleFrame.minY + padding
+        case .topCenter:
+            yPosition = visibleFrame.maxY - height - padding
+        }
 
         return NSRect(
             x: xPosition,

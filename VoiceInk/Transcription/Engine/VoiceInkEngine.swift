@@ -20,6 +20,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     private var recordedFile: URL?
     private var activeRecordingID: UUID?
     private var sampleBuffer: RecordingSampleBuffer?
+    private var partialTranscriptTask: Task<Void, Never>?
     private var idleUnloadWorkItem: DispatchWorkItem?
     private var recordInterval: OSSignpostIntervalState?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "VoiceInkEngine")
@@ -73,6 +74,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         shouldCancelRecording = true
         activeRecordingID = nil
         await recorder.stopRecording()
+        await finishPartialTranscription()
         endRecordIntervalIfNeeded()
         sampleBuffer?.discard()
         sampleBuffer = nil
@@ -88,6 +90,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         activeRecordingID = nil
         partialTranscript = ""
         await recorder.stopRecording()
+        await finishPartialTranscription()
         endRecordIntervalIfNeeded()
         sampleBuffer?.discard()
         sampleBuffer = nil
@@ -140,6 +143,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             Task(priority: .userInitiated) { @MainActor [weak self] in
                 await self?.warmCurrentModelIfPossible()
             }
+            startPartialTranscriptionIfEnabled(buffer: buffer, recordingID: recordingID)
         } catch {
             logger.error("Recording failed to start: \(error, privacy: .public)")
             recordingState = .idle
@@ -158,6 +162,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         partialTranscript = ""
         recordingState = .transcribing
         await recorder.stopRecording()
+        await finishPartialTranscription()
         if let recordInterval {
             LeanSignpost.signposter.endInterval("record", recordInterval)
             self.recordInterval = nil
@@ -214,6 +219,48 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         if recordingState == .transcribing {
             recordingState = .idle
         }
+    }
+
+    /// Opt-in live transcript: while recording, periodically transcribe a
+    /// snapshot of the in-memory buffer and publish it as partialTranscript.
+    /// Inert unless ShowLiveTranscript is on; costs CPU only while recording.
+    private func startPartialTranscriptionIfEnabled(buffer: RecordingSampleBuffer, recordingID: UUID) {
+        guard UserDefaults.standard.bool(forKey: "ShowLiveTranscript") else { return }
+
+        partialTranscriptTask = Task(priority: .utility) { @MainActor [weak self] in
+            // One second of audio minimum before the first partial pass.
+            let minimumSamples = 16_000
+            while let self, !Task.isCancelled,
+                  self.recordingState == .recording,
+                  self.activeRecordingID == recordingID {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled,
+                      self.recordingState == .recording,
+                      self.activeRecordingID == recordingID else { break }
+
+                let samples = buffer.snapshotFloatSamples()
+                guard samples.count >= minimumSamples else { continue }
+
+                guard let text = try? await self.serviceRegistry.transcribe(
+                    samples: samples,
+                    model: self.model
+                ) else { continue }
+
+                if !Task.isCancelled,
+                   self.recordingState == .recording,
+                   self.activeRecordingID == recordingID {
+                    self.partialTranscript = text
+                }
+            }
+        }
+    }
+
+    /// Cancels the partial-transcript loop and waits for any in-flight pass,
+    /// so the final transcription never runs concurrently with a partial one.
+    private func finishPartialTranscription() async {
+        partialTranscriptTask?.cancel()
+        await partialTranscriptTask?.value
+        partialTranscriptTask = nil
     }
 
     /// Opt-in: release model memory after N idle minutes (0 = keep resident).

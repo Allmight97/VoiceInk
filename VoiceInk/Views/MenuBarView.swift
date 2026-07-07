@@ -23,6 +23,17 @@ struct MenuBarView: View {
         }
         .disabled(engine.recordingState == .starting || engine.recordingState == .transcribing)
 
+        Button("Copy Last Transcription") {
+            if let text = TranscriptionLog.lastText() {
+                _ = ClipboardManager.copyToClipboard(text)
+            } else {
+                NotificationManager.shared.showNotification(
+                    title: String(localized: "No transcription history yet"),
+                    type: .info
+                )
+            }
+        }
+
         Button("Settings...") {
             openSettings()
             NSApp.activate(ignoringOtherApps: true)

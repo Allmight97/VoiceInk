@@ -13,8 +13,14 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .tabItem { Label("Filler Words", systemImage: "textformat") }
+
+            Form {
+                WordReplacementsSettingsSection()
+            }
+            .formStyle(.grouped)
+            .tabItem { Label("Replacements", systemImage: "arrow.left.arrow.right") }
         }
-        .frame(width: 500, height: 360)
+        .frame(width: 500, height: 400)
         .scenePadding()
     }
 }
@@ -25,6 +31,9 @@ private struct GeneralSettingsView: View {
     @AppStorage(AppDefaults.soundFeedbackEnabled) private var soundFeedback = true
     @AppStorage(AppDefaults.unloadModelAfterIdleMinutes) private var unloadMinutes = 0
     @AppStorage(AppDefaults.debugKeepRecordings) private var debugKeepRecordings = false
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
+    @AppStorage(RecorderDisplaySettingsKeys.panelPosition) private var panelPosition = RecorderPanelPosition.bottomCenter.rawValue
+    @AppStorage(AppDefaults.enableHistoryLog) private var historyLog = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -52,8 +61,18 @@ private struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Recorder") {
+                Toggle("Show Live Transcript", isOn: $showLiveTranscript)
+                Picker("Recorder Position", selection: $panelPosition) {
+                    ForEach(RecorderPanelPosition.allCases) { position in
+                        Text(position.displayName).tag(position.rawValue)
+                    }
+                }
+            }
+
             Section("Behavior") {
                 Toggle("Sound Feedback", isOn: $soundFeedback)
+                Toggle("Keep History Log", isOn: $historyLog)
                 Toggle("Launch at Login", isOn: launchAtLoginBinding)
                 Stepper(value: $unloadMinutes, in: 0...240) {
                     Text("Unload Model After Idle: \(unloadMinutes == 0 ? "Never" : "\(unloadMinutes) min")")

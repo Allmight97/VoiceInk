@@ -37,6 +37,21 @@ final class RecordingSampleBuffer: @unchecked Sendable {
         data.append(chunk)
     }
 
+    /// Non-consuming copy of the samples accumulated so far (live-transcript
+    /// partial passes read this while recording continues).
+    func snapshotFloatSamples() -> [Float] {
+        lock.lock()
+        let bytes = data
+        lock.unlock()
+
+        return bytes.withUnsafeBytes { raw -> [Float] in
+            let int16Buffer = raw.bindMemory(to: Int16.self)
+            return int16Buffer.map { sample in
+                max(-1.0, min(Float(Int16(littleEndian: sample)) / 32767.0, 1.0))
+            }
+        }
+    }
+
     /// Converts the accumulated PCM16 bytes to normalized Float samples and
     /// releases the byte storage.
     func takeFloatSamples() -> [Float] {
