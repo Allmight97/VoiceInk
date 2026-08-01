@@ -20,6 +20,33 @@
 
 ---
 
+> **This is a personal fork, and the text below describes upstream, not this
+> build.**
+>
+> `Allmight97/VoiceInk` on branch `jstar/lean-local` has been stripped to a
+> single job: global hotkey → record the microphone → local Parakeet
+> transcription → paste into the frontmost app. Whisper, cloud transcription,
+> AI enhancement, per-app modes, the dashboard, the history database,
+> licensing, the updater, and most onboarding were removed. Six of the eight
+> dependencies are gone.
+>
+> Anything below about modes, the AI assistant, context awareness, the personal
+> dictionary, licensing, or those dependencies is **no longer accurate**.
+>
+> Start here instead:
+>
+> - [`docs/`](docs/README.md) — what the app is now, its behavior contract, and
+>   the in-progress reorganization into deep modules
+> - [`AGENTS.md`](AGENTS.md) — orientation for coding agents
+> - [`BUILDING.md`](BUILDING.md) — how to build this fork (no whisper.cpp step)
+> - [`LEAN-SPEC.md`](LEAN-SPEC.md) — what the strip removed and why
+> - [`FELT-GAPS.md`](FELT-GAPS.md) — what has been restored, and why
+>
+> A full rewrite of this README is pending the naming decision in
+> [`docs/08-open-decisions.md`](docs/08-open-decisions.md).
+
+---
+
 VoiceInk is a native macOS application that transcribes what you say to text almost instantly. You can find all the information and download the app from [here](https://tryvoiceink.com). 
 
 ![VoiceInk Mac App](https://github.com/user-attachments/assets/12367379-83e7-48a6-b52c-4488a6a04bba)

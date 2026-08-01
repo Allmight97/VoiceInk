@@ -1,20 +1,33 @@
-# ⚠️ This Project Does Not Accept Pull Requests
+## What changed
 
-Thank you for your interest in contributing to VoiceInk!
+<!-- One or two sentences. Lead with the outcome, not the mechanics. -->
 
-However, **this project is not currently accepting pull requests.**
+## Why
 
-## Please close this PR
+<!-- Which outcome or open decision does this serve?
+     Link the relevant doc: docs/01-behavior-contract.md, docs/08-open-decisions.md, ... -->
 
-## Alternative ways to contribute:
+## Behavior impact
 
-- 🐛 **Report bugs**: Open an [issue](../../issues) with detailed information
-- 💡 **Suggest features**: Share your ideas via [issues](../../issues) or [discussions](../../discussions)
-- 🍴 **Fork the project**: You're welcome to create and maintain your own fork
-- 📖 **Improve documentation**: Suggest corrections or clarifications via issues
+<!-- Pick one and delete the rest. -->
 
-Thank you for understanding, and I appreciate your interest in VoiceInk!
+- [ ] **No observable behavior change** — pure restructuring, deletion, or docs
+- [ ] **Deliberate behavior change** — cite the `[?]` item in
+      `docs/01-behavior-contract.md` or the `D-number` in
+      `docs/08-open-decisions.md` that authorized it
+- [ ] **New or removed feature** — should not happen during the reorganization;
+      justify or move it to `FELT-GAPS.md`
 
----
+## Gate
 
-For more information, see [CONTRIBUTING.md](../CONTRIBUTING.md)
+<!-- See docs/07-sequencing.md#the-gate -->
+
+- [ ] Builds clean, no new warnings; `make local` produces a launchable app
+- [ ] Pre-existing tests pass unmodified
+- [ ] Smoke script run (`docs/07-sequencing.md#the-smoke-script`)
+- [ ] Idle cost unchanged against the Wave 0 baseline
+
+## Notes for review
+
+<!-- Anything subtle: ordering that matters, a boundary that moved,
+     something you were unsure about. -->
