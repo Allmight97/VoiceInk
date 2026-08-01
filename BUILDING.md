@@ -1,139 +1,159 @@
-# Building VoiceInk
+# Building
 
-This guide provides detailed instructions for building VoiceInk from source.
+Build instructions for this fork (`Allmight97/VoiceInk`, branch
+`jstar/lean-local`).
+
+> This fork diverges substantially from upstream VoiceInk. Whisper, cloud
+> transcription, AI enhancement, the updater and most other subsystems were
+> removed. If you followed upstream's build instructions before, ignore them:
+> **there is no whisper.cpp step any more.**
 
 ## Prerequisites
 
-Before you begin, ensure you have:
-- macOS 14.4 or later
-- Xcode (latest version recommended)
-- Swift (latest version recommended)
-- Git (for cloning repositories)
+- macOS 14.4 or later (see the deployment-floor question in
+  [`docs/05-macos-27-adoption.md`](docs/05-macos-27-adoption.md))
+- Xcode, with command line tools
+- `git`
 
-## Quick Start with Makefile (Recommended)
+That is the whole list. There are no external frameworks to fetch and no
+`~/VoiceInk-Dependencies` directory. The only dependencies are two Swift
+packages — [FluidAudio](https://github.com/FluidInference/FluidAudio) and
+[swift-atomics](https://github.com/apple/swift-atomics) — which Xcode resolves
+automatically.
 
-The easiest way to build VoiceInk is using the included Makefile, which automates the entire build process including building and linking the whisper framework.
-
-### Simple Build Commands
+## Quick start
 
 ```bash
-# Clone the repository
-git clone https://github.com/Beingpax/VoiceInk.git
+git clone https://github.com/Allmight97/VoiceInk.git
 cd VoiceInk
-
-# Build everything (recommended for first-time setup)
-make all
-
-# Or for development (build and run)
-make dev
+make install
 ```
 
-### Available Makefile Commands
+`make install` builds a Release binary, signs it, copies it to `/Applications`,
+and launches it.
 
-- `make check` or `make healthcheck` - Verify all required tools are installed
-- `make whisper` - Clone and build whisper.cpp XCFramework automatically
-- `make setup` - Prepare the whisper framework for linking
-- `make build` - Build the VoiceInk Xcode project
-- `make local` - Build for local use (no Apple Developer certificate needed)
-- `make run` - Launch the built VoiceInk app
-- `make dev` - Build and run (ideal for development workflow)
-- `make all` - Complete build process (default)
-- `make clean` - Remove build artifacts and dependencies
-- `make help` - Show all available commands
+## Targets
 
-### How the Makefile Helps
+| Target | What it does |
+|---|---|
+| `make check` (`healthcheck`) | verifies `git`, `xcodebuild` and `swift` are present |
+| `make build` | unsigned Debug build via `xcodebuild` |
+| `make local` | **Release** build, self-signed, copied to `~/Downloads/VoiceInk.app` |
+| `make install` | `make local`, then quit any running copy, install to `/Applications`, and launch |
+| `make run` | launch an already-built app |
+| `make dev` | `build` then `run` |
+| `make all` | `check` then `build` (the default target) |
+| `make archive-stock` | zip whatever is currently in `/Applications/VoiceInk.app` as a backup |
+| `make clean` | remove `.local-build/` |
+| `make help` | list targets |
 
-The Makefile automatically:
-1. **Manages Dependencies**: Creates a dedicated `~/VoiceInk-Dependencies` directory for all external frameworks
-2. **Builds Whisper Framework**: Clones whisper.cpp and builds the XCFramework with the correct configuration
-3. **Handles Framework Linking**: Sets up the whisper.xcframework in the proper location for Xcode to find
-4. **Verifies Prerequisites**: Checks that git, xcodebuild, and swift are installed before building
-5. **Streamlines Development**: Provides convenient shortcuts for common development tasks
+## Use `make local`, not `make build`
 
-This approach ensures consistent builds across different machines and eliminates manual framework setup errors.
+For anything you intend to actually run, use `make local` or `make install`.
 
----
+`make local` builds Release with a **stable self-signed identity** named
+`VoiceInk Local`, configured in `LocalBuild.xcconfig` and passed on the
+`xcodebuild` command line. That identity matters more than it looks:
 
-## Building for Local Use (No Apple Developer Certificate)
+- **macOS keys TCC permission grants partly on code signature.** With a stable
+  identity, your Microphone and Accessibility grants survive rebuilds. Without
+  one, every build looks like a new app and you re-grant permissions each time.
+- Debug builds link debug dylibs that a self-signed identity cannot ship, so
+  `make build` output can be rejected at launch.
+- Release is also what you want for real use — the transcription path is
+  meaningfully faster optimized.
 
-If you don't have an Apple Developer certificate, use `make local`:
+### One-time signing identity setup
+
+`make local` expects a code-signing identity named `VoiceInk Local` in your
+login keychain. Create it once via **Keychain Access → Certificate Assistant →
+Create a Certificate**:
+
+- Name: `VoiceInk Local`
+- Identity Type: Self Signed Root
+- Certificate Type: Code Signing
+
+Then verify:
 
 ```bash
-git clone https://github.com/Beingpax/VoiceInk.git
-cd VoiceInk
-make local
-open ~/Downloads/VoiceInk.app
+security find-identity -v -p codesigning | grep "VoiceInk Local"
 ```
 
-This builds VoiceInk with ad-hoc signing using a separate build configuration (`LocalBuild.xcconfig`) that requires no Apple Developer account.
+To use a different name, override it:
 
-### How It Works
-
-The `make local` command uses:
-- `LocalBuild.xcconfig` to override signing and entitlements settings
-- `VoiceInk.local.entitlements` (stripped-down, no CloudKit/keychain groups)
-- `LOCAL_BUILD` Swift compilation flag for conditional code paths
-
-Your normal `make all` / `make build` commands are completely unaffected.
-
----
-
-## Manual Build Process (Alternative)
-
-If you prefer to build manually or need more control over the build process, follow these steps:
-
-### Building whisper.cpp Framework
-
-1. Clone and build whisper.cpp:
 ```bash
-git clone https://github.com/ggerganov/whisper.cpp.git
-cd whisper.cpp
-./build-xcframework.sh
-```
-This will create the XCFramework at `build-apple/whisper.xcframework`.
-
-### Building VoiceInk
-
-1. Clone the VoiceInk repository:
-```bash
-git clone https://github.com/Beingpax/VoiceInk.git
-cd VoiceInk
+make local LOCAL_SIGN_IDENTITY="My Identity"
 ```
 
-2. Add the whisper.xcframework to your project:
-   - Drag and drop `../whisper.cpp/build-apple/whisper.xcframework` into the project navigator, or
-   - Add it manually in the "Frameworks, Libraries, and Embedded Content" section of project settings
+## First run
 
-3. Build and Run
-   - Build the project using Cmd+B or Product > Build
-   - Run the project using Cmd+R or Product > Run
+1. Launch the app. It appears in the menu bar only — no Dock icon, no window.
+2. Open **Settings** from the menu bar and assign a dictation shortcut. Until
+   you do, only the menu can start dictation.
+3. The first dictation prompts for **Microphone** and **Accessibility**
+   permission. Both are required: the microphone to record, Accessibility both
+   for the global hotkey (`CGEventTap`) and to paste via a synthetic ⌘V.
+4. The first dictation also downloads the Parakeet model. **This currently
+   happens silently and can take a while** on a slow connection — see
+   [D8](docs/08-open-decisions.md).
 
-## Development Setup
+## Where things end up
 
-1. **Xcode Configuration**
-   - Ensure you have the latest Xcode version
-   - Install any required Xcode Command Line Tools
+```
+.local-build/                     derived data for `make local` (gitignored)
+~/Downloads/VoiceInk.app          output of `make local`
+/Applications/VoiceInk.app        output of `make install`
 
-2. **Dependencies**
-   - The project uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for transcription
-   - Ensure the whisper.xcframework is properly linked in your Xcode project
-   - Test the whisper.cpp installation independently before proceeding
+~/Library/Application Support/com.prakashjoshipax.VoiceInk/
+├── Recordings/                   deleted after transcription unless
+│                                 DebugKeepRecordings is set
+└── transcriptions.jsonl          history log
+```
 
-3. **Building for Development**
-   - Use the Debug configuration for development
-   - Enable relevant debugging options in Xcode
-
-4. **Testing**
-   - Run the test suite before making changes
-   - Ensure all tests pass after your modifications
+FluidAudio manages the Parakeet model cache in its own directory.
 
 ## Troubleshooting
 
-If you encounter any build issues:
-1. Clean the build folder (Cmd+Shift+K)
-2. Clean the build cache (Cmd+Shift+K twice)
-3. Check Xcode and macOS versions
-4. Verify all dependencies are properly installed
-5. Make sure whisper.xcframework is properly built and linked
+**The app launches but the hotkey does nothing.** Almost always Accessibility
+permission. Check System Settings → Privacy & Security → Accessibility. Note
+that a failed event tap is currently silent — the app looks fine while its main
+input is dead ([D5 and related](docs/08-open-decisions.md)).
 
-For more help, please check the [issues](https://github.com/Beingpax/VoiceInk/issues) section or create a new issue. 
+**Permissions are requested again after every build.** The `VoiceInk Local`
+signing identity is missing or changed. See the setup section above.
+
+**The first dictation takes a long time and produces nothing.** The model is
+downloading. Watch for network activity, or check Console for the
+`com.prakashjoshipax.voiceink` subsystem.
+
+**Nothing is pasted, but the app seems fine.** The text is probably on your
+clipboard — try ⌘V. Paste failure is currently not reported ([D5](docs/08-open-decisions.md)).
+
+**Stale build artifacts.** `make clean`, then `make local`. To go further,
+delete `~/Library/Developer/Xcode/DerivedData/VoiceInk-*`.
+
+## Debugging
+
+The app logs under subsystem `com.prakashjoshipax.voiceink`:
+
+```bash
+log stream --predicate 'subsystem == "com.prakashjoshipax.voiceink"' --level debug
+```
+
+It also emits `os_signpost` intervals for `record`, `transcribe` and `paste`
+under subsystem `com.prakashjoshipax.VoiceInk`, category `leanpath`. Open
+Instruments with the os_signpost instrument to see where time goes in the core
+loop.
+
+To keep recorded WAV files for inspection:
+
+```bash
+defaults write com.prakashjoshipax.VoiceInk DebugKeepRecordings -bool true
+```
+
+## Further reading
+
+- [`docs/`](docs/README.md) — architecture, behavior contract, and the
+  in-progress reorganization
+- [`LEAN-SPEC.md`](LEAN-SPEC.md) — what the lean strip removed and why
+- [`FELT-GAPS.md`](FELT-GAPS.md) — the ledger of what has been restored
