@@ -203,7 +203,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                     await self?.recorderUIManager?.dismissRecorderPanel()
                 }
             )
-            isCurrentModelLoaded = serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
+            isCurrentModelLoaded = await serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
             scheduleIdleUnloadIfEnabled()
         } catch {
             logger.error("Transcription failed: \(error, privacy: .public)")
@@ -299,7 +299,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
         do {
             try await serviceRegistry.fluidAudioTranscriptionService.loadModel(for: model)
-            isCurrentModelLoaded = serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
+            isCurrentModelLoaded = await serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
         } catch {
             logger.error("Model load failed: \(error, privacy: .public)")
         }

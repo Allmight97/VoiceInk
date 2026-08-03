@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class WordReplacementService {
     static let shared = WordReplacementService()
 

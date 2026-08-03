@@ -26,22 +26,17 @@ enum AppAppearancePreference: String, CaseIterable, Hashable, Identifiable {
         return AppAppearancePreference(rawValue: rawValue) ?? .system
     }
 
+    @MainActor
     static func applyStored() {
         stored.apply()
     }
 
+    @MainActor
     func apply() {
-        let updateAppearance = {
-            NSApplication.shared.appearance = self.appKitAppearance
-        }
-
-        if Thread.isMainThread {
-            updateAppearance()
-        } else {
-            DispatchQueue.main.async(execute: updateAppearance)
-        }
+        NSApplication.shared.appearance = appKitAppearance
     }
 
+    @MainActor
     private var appKitAppearance: NSAppearance? {
         switch self {
         case .system:

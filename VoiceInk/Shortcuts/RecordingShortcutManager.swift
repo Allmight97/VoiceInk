@@ -122,7 +122,7 @@ final class RecordingShortcutManager: ObservableObject {
         await engine?.setPushToTalkRecording(isPressed: false)
     }
 
-    deinit {
+    isolated deinit {
         if let shortcutChangeObserver {
             NotificationCenter.default.removeObserver(shortcutChangeObserver)
         }

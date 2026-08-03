@@ -8,6 +8,7 @@ import SwiftUI
 struct VoiceInkTests {
 
     @Test("Output filtering removes bracketed transcript artifacts")
+    @MainActor
     func outputFilteringRemovesBracketedArtifacts() {
         let filtered = TranscriptionOutputFilter.filter("Keep [aside]   this.")
 

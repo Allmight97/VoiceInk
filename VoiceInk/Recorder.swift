@@ -120,8 +120,9 @@ class Recorder: NSObject, ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task {
-                await self?.handleDeviceSwitchRequired(notification)
+            let newDeviceID = notification.userInfo?["newDeviceID"] as? AudioDeviceID
+            Task { @MainActor in
+                await self?.handleDeviceSwitchRequired(newDeviceID: newDeviceID)
             }
         }
     }
@@ -139,11 +140,10 @@ class Recorder: NSObject, ObservableObject {
         }
     }
 
-    private func handleDeviceSwitchRequired(_ notification: Notification) async {
+    private func handleDeviceSwitchRequired(newDeviceID: AudioDeviceID?) async {
         guard !isReconfiguring else { return }
         guard deviceManager.isRecordingActive else { return }
-        guard let userInfo = notification.userInfo,
-              let newDeviceID = userInfo["newDeviceID"] as? AudioDeviceID else {
+        guard let newDeviceID else {
             logger.error("Device switch notification missing newDeviceID")
             return
         }
@@ -319,7 +319,7 @@ class Recorder: NSObject, ObservableObject {
     
     // MARK: - Cleanup
 
-    deinit {
+    isolated deinit {
         audioMeterTask?.cancel()
         if let observer = deviceSwitchObserver {
             NotificationCenter.default.removeObserver(observer)

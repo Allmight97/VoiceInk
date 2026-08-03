@@ -1,13 +1,13 @@
 import Foundation
 
-struct TranscriptionRequestContext {
+struct TranscriptionRequestContext: Sendable {
     let language: String?
     let prompt: String?
 
     static let leanDefault = TranscriptionRequestContext(language: "en", prompt: nil)
 }
 
-protocol TranscriptionService {
+protocol TranscriptionService: Sendable {
     func transcribe(audioURL: URL, model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String
 
     /// In-memory path: 16 kHz mono Float samples straight from the recorder.

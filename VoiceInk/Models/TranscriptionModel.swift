@@ -5,7 +5,7 @@ enum ModelProvider: String, Codable, Hashable, CaseIterable {
     case nativeApple = "Native Apple"
 }
 
-protocol TranscriptionModel: Identifiable, Hashable {
+protocol TranscriptionModel: Identifiable, Hashable, Sendable {
     var id: UUID { get }
     var name: String { get }
     var displayName: String { get }

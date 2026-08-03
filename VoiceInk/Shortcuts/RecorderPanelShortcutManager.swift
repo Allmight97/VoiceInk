@@ -116,7 +116,7 @@ final class RecorderPanelShortcutManager: ObservableObject {
         escapeTimeoutTask = nil
     }
 
-    deinit {
+    isolated deinit {
         if let shortcutChangeObserver {
             NotificationCenter.default.removeObserver(shortcutChangeObserver)
         }

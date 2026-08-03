@@ -2,7 +2,7 @@ import FluidAudio
 import Foundation
 import os
 
-final class FluidAudioTranscriptionService: TranscriptionService {
+actor FluidAudioTranscriptionService: TranscriptionService {
     private var asrManager: AsrManager?
     private var activeVersion: AsrModelVersion?
     private var cachedModels: AsrModels?

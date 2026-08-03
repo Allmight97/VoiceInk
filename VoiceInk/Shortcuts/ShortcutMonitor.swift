@@ -19,9 +19,9 @@ final class ShortcutMonitor {
 
     private var shortcuts: [ShortcutAction: ShortcutState] = [:]
     private var interruptibleActions: Set<ShortcutAction> = []
-    private var onKeyDown: ((ShortcutAction, TimeInterval) -> Void)?
-    private var onKeyUp: ((ShortcutAction, TimeInterval) -> Void)?
-    private var onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)?
+    private var onKeyDown: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
+    private var onKeyUp: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
+    private var onShortcutInterrupted: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
     private var eventTap: CFMachPort?
     private var eventTapRunLoopSource: CFRunLoopSource?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "ShortcutMonitor")
@@ -36,9 +36,9 @@ final class ShortcutMonitor {
     func start(
         shortcuts: [ShortcutAction: Shortcut],
         interruptibleActions: Set<ShortcutAction> = [],
-        onKeyDown: @escaping (ShortcutAction, TimeInterval) -> Void,
-        onKeyUp: @escaping (ShortcutAction, TimeInterval) -> Void,
-        onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)? = nil
+        onKeyDown: @escaping @MainActor @Sendable (ShortcutAction, TimeInterval) -> Void,
+        onKeyUp: @escaping @MainActor @Sendable (ShortcutAction, TimeInterval) -> Void,
+        onShortcutInterrupted: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)? = nil
     ) -> Bool {
         stop()
 
