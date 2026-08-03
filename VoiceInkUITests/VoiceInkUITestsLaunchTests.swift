@@ -1,10 +1,3 @@
-//
-//  VoiceInkUITestsLaunchTests.swift
-//  VoiceInkUITests
-//
-//  Created by Prakash Joshi on 15/10/2024.
-//
-
 import XCTest
 
 final class VoiceInkUITestsLaunchTests: XCTestCase {
@@ -22,8 +15,7 @@ final class VoiceInkUITestsLaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        XCTAssertGreaterThan(app.state.rawValue, 1)
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Launch Screen"
