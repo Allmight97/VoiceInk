@@ -1,14 +1,10 @@
 import FluidAudio
-import Foundation
-import os
 
-actor FluidAudioTranscriptionService: TranscriptionService {
+actor FluidAudioTranscriptionService {
     private var asrManager: AsrManager?
     private var activeVersion: AsrModelVersion?
     private var cachedModels: AsrModels?
     private var loadingTask: (version: AsrModelVersion, task: Task<AsrModels, Error>)?
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "FluidAudioTranscriptionService")
-
     var isModelLoaded: Bool {
         asrManager != nil && activeVersion == .v2
     }
@@ -45,15 +41,11 @@ actor FluidAudioTranscriptionService: TranscriptionService {
         }
     }
 
-    func loadModel(for model: FluidAudioModel) async throws {
+    func loadModel() async throws {
         try await ensureModelsLoaded(for: .v2)
     }
 
-    func transcribe(audioURL: URL, model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
-        try await transcribe(samples: readAudioSamples(from: audioURL), model: model, context: context)
-    }
-
-    func transcribe(samples: [Float], model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
+    func transcribe(samples: [Float]) async throws -> String {
         try await ensureModelsLoaded(for: .v2)
 
         guard let asrManager else {
@@ -95,24 +87,5 @@ actor FluidAudioTranscriptionService: TranscriptionService {
         try await manager.loadModels(models)
         asrManager = manager
         activeVersion = version
-    }
-
-    private func readAudioSamples(from url: URL) throws -> [Float] {
-        do {
-            let data = try Data(contentsOf: url)
-            guard data.count > 44 else {
-                throw ASRError.invalidAudioData
-            }
-
-            return stride(from: 44, to: data.count, by: 2).map {
-                data[$0..<$0 + 2].withUnsafeBytes {
-                    let short = Int16(littleEndian: $0.load(as: Int16.self))
-                    return max(-1.0, min(Float(short) / 32767.0, 1.0))
-                }
-            }
-        } catch {
-            logger.error("Could not read audio samples: \(error, privacy: .public)")
-            throw ASRError.invalidAudioData
-        }
     }
 }

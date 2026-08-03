@@ -3,29 +3,24 @@ import os
 
 @MainActor
 final class TranscriptionPipeline {
-    private let serviceRegistry: TranscriptionServiceRegistry
+    private let fluidAudioService: FluidAudioTranscriptionService
     private let delivery: TranscriptionDelivery
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "TranscriptionPipeline")
 
-    init(serviceRegistry: TranscriptionServiceRegistry, delivery: TranscriptionDelivery) {
-        self.serviceRegistry = serviceRegistry
+    init(fluidAudioService: FluidAudioTranscriptionService, delivery: TranscriptionDelivery) {
+        self.fluidAudioService = fluidAudioService
         self.delivery = delivery
     }
 
     func run(
         samples: [Float],
-        model: any TranscriptionModel,
         shouldCancel: () -> Bool,
         onDismiss: @escaping () async -> Void
     ) async throws {
         if shouldCancel() { return }
 
         let transcribeInterval = LeanSignpost.signposter.beginInterval("transcribe")
-        var text = try await serviceRegistry.transcribe(
-            samples: samples,
-            model: model,
-            context: .leanDefault
-        )
+        var text = try await fluidAudioService.transcribe(samples: samples)
         LeanSignpost.signposter.endInterval("transcribe", transcribeInterval)
         if shouldCancel() { return }
 

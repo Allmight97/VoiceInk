@@ -20,17 +20,14 @@ struct VoiceInkApp: App {
         let fluidAudioModelManager = FluidAudioModelManager()
         let fluidAudioService = FluidAudioTranscriptionService()
         let delivery = TranscriptionDelivery()
-        let serviceRegistry = TranscriptionServiceRegistry(
-            fluidAudioTranscriptionService: fluidAudioService
-        )
         let pipeline = TranscriptionPipeline(
-            serviceRegistry: serviceRegistry,
+            fluidAudioService: fluidAudioService,
             delivery: delivery
         )
         let engine = VoiceInkEngine(
             recorder: recorder,
             fluidAudioModelManager: fluidAudioModelManager,
-            serviceRegistry: serviceRegistry,
+            fluidAudioService: fluidAudioService,
             pipeline: pipeline
         )
         let recorderUIManager = RecorderUIManager()

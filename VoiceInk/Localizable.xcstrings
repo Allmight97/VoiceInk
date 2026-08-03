@@ -3030,134 +3030,6 @@
         }
       }
     },
-    "Apple Speech can reserve up to 5 languages. Choose one to remove before downloading the selected language." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech kann bis zu 5 Sprachen reservieren. Wähle eine zum Entfernen aus, bevor du die neue Sprache herunterlädst."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 最多可保留 5 种语言。下载所选语言前，请先选取一种移除。"
-          }
-        }
-      }
-    },
-    "Apple Speech can reserve up to 5 languages. Manage reserved languages in Mode settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech kann bis zu 5 Sprachen reservieren. Verwalte reservierte Sprachen in den Moduseinstellungen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 最多可保留 5 种语言。请在「模式」设置中管理已保留的语言。"
-          }
-        }
-      }
-    },
-    "Apple Speech could not reserve language assets for %@. Manage reserved Apple Speech languages in settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech konnte die Sprachressourcen für %@ nicht reservieren. Verwalte reservierte Apple-Speech-Sprachen in den Einstellungen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 无法为 %@ 预留语言资源。请在设置中管理已预留的 Apple Speech 语言。"
-          }
-        }
-      }
-    },
-    "Apple Speech did not finish returning transcription results." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech hat die Rückgabe der Transkriptionsergebnisse nicht abgeschlossen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 未能完整返回转写结果。"
-          }
-        }
-      }
-    },
-    "Apple Speech does not support this language." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech unterstützt diese Sprache nicht."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 不支持此语言。"
-          }
-        }
-      }
-    },
-    "Apple Speech language download failed: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download der Apple-Speech-Sprache fehlgeschlagen: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 语言下载失败：%@"
-          }
-        }
-      }
-    },
-    "Apple Speech language downloads are not available on this system." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Downloads für Apple-Speech-Sprachen sind auf diesem System nicht verfügbar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此系统不支持下载 Apple Speech 语言。"
-          }
-        }
-      }
-    },
-    "Apple Speech language is downloaded." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Apple-Speech-Sprache wurde heruntergeladen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Speech 语言已下载。"
-          }
-        }
-      }
-    },
     "AppleScript" : {
       "localizations" : {
         "de" : {
@@ -4008,22 +3880,6 @@
         }
       }
     },
-    "Checking whether this Apple Speech language is downloaded." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es wird geprüft, ob diese Apple-Speech-Sprache heruntergeladen ist."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在检查此 Apple Speech 语言是否已下载。"
-          }
-        }
-      }
-    },
     "Choose" : {
       "localizations" : {
         "de" : {
@@ -4868,22 +4724,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接到服务器。请检查互联网连接后重试。"
-          }
-        }
-      }
-    },
-    "Could not remove %@ from reserved Apple Speech languages." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ konnte nicht aus den reservierten Apple-Speech-Sprachen entfernt werden."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法将 %@ 从 Apple Speech 保留语言中移除。"
           }
         }
       }
@@ -6149,38 +5989,6 @@
         }
       }
     },
-    "Download required for %@." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download für %@ erforderlich."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要先下载 %@。"
-          }
-        }
-      }
-    },
-    "Download this Apple Speech language." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Apple-Speech-Sprache herunterladen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下载此 Apple Speech 语言。"
-          }
-        }
-      }
-    },
     "Downloaded" : {
       "localizations" : {
         "de" : {
@@ -6209,22 +6017,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在下载 %@ 模型"
-          }
-        }
-      }
-    },
-    "Downloading assets for the selected Apple Speech language." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ressourcen für die ausgewählte Apple-Speech-Sprache werden heruntergeladen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在下载所选 Apple Speech 语言的资源。"
           }
         }
       }
@@ -8685,22 +8477,6 @@
         }
       }
     },
-    "Invalid model type provided for Native Apple transcription." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ungültiger Modelltyp für native Apple-Transkription angegeben."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为 Apple 原生转写提供的模型类型无效。"
-          }
-        }
-      }
-    },
     "Invalid Ollama server URL" : {
       "localizations" : {
         "de" : {
@@ -10313,22 +10089,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "名称不能为空"
-          }
-        }
-      }
-    },
-    "Native Apple" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Natives Apple"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple 原生"
           }
         }
       }
@@ -13069,22 +12829,6 @@
         }
       }
     },
-    "Remove %@ from reserved Apple Speech languages." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ aus reservierten Apple-Speech-Sprachen entfernen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将 %@ 从 Apple Speech 保留语言中移除。"
-          }
-        }
-      }
-    },
     "Remove %@ triggers" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14967,22 +14711,6 @@
         }
       }
     },
-    "SpeechAnalyzer requires macOS 26 or later." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SpeechAnalyzer erfordert macOS 26 oder neuer."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SpeechAnalyzer 需要 macOS 26 或更高版本。"
-          }
-        }
-      }
-    },
     "Speed" : {
       "localizations" : {
         "de" : {
@@ -15902,22 +15630,6 @@
         }
       }
     },
-    "The selected language is not supported by SpeechAnalyzer." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die ausgewählte Sprache wird von SpeechAnalyzer nicht unterstützt."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SpeechAnalyzer 不支持所选语言。"
-          }
-        }
-      }
-    },
     "The settings export operation was canceled." : {
       "localizations" : {
         "de" : {
@@ -16640,22 +16352,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "转写"
-          }
-        }
-      }
-    },
-    "Transcription failed using SpeechAnalyzer." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkription mit SpeechAnalyzer fehlgeschlagen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 SpeechAnalyzer 转写失败。"
           }
         }
       }

@@ -14,7 +14,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     weak var recorderUIManager: RecorderPanelPresenting?
 
     private let fluidAudioModelManager: FluidAudioModelManager
-    private let serviceRegistry: TranscriptionServiceRegistry
+    private let fluidAudioService: FluidAudioTranscriptionService
     private let pipeline: TranscriptionPipeline
     private let recordingsDirectory: URL
     private var recordedFile: URL?
@@ -32,12 +32,12 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     init(
         recorder: Recorder,
         fluidAudioModelManager: FluidAudioModelManager,
-        serviceRegistry: TranscriptionServiceRegistry,
+        fluidAudioService: FluidAudioTranscriptionService,
         pipeline: TranscriptionPipeline
     ) {
         self.recorder = recorder
         self.fluidAudioModelManager = fluidAudioModelManager
-        self.serviceRegistry = serviceRegistry
+        self.fluidAudioService = fluidAudioService
         self.pipeline = pipeline
 
         let appSupportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -197,13 +197,12 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
             try await pipeline.run(
                 samples: samples,
-                model: model,
                 shouldCancel: { [weak self] in self?.shouldCancelRecording ?? true },
                 onDismiss: { [weak self] in
                     await self?.recorderUIManager?.dismissRecorderPanel()
                 }
             )
-            isCurrentModelLoaded = await serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
+            isCurrentModelLoaded = await fluidAudioService.isModelLoaded
             scheduleIdleUnloadIfEnabled()
         } catch {
             logger.error("Transcription failed: \(error, privacy: .public)")
@@ -241,10 +240,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                 let samples = buffer.snapshotFloatSamples()
                 guard samples.count >= minimumSamples else { continue }
 
-                guard let text = try? await self.serviceRegistry.transcribe(
-                    samples: samples,
-                    model: self.model
-                ) else { continue }
+                guard let text = try? await self.fluidAudioService.transcribe(samples: samples) else { continue }
 
                 if !Task.isCancelled,
                    self.recordingState == .recording,
@@ -275,7 +271,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         let workItem = DispatchWorkItem { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.recordingState == .idle else { return }
-                await self.serviceRegistry.cleanup()
+                await self.fluidAudioService.cleanup()
                 self.isCurrentModelLoaded = false
                 self.logger.notice("Unloaded model after \(minutes, privacy: .public) idle minutes")
             }
@@ -298,8 +294,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         guard fluidAudioModelManager.isFluidAudioModelDownloaded(model) else { return }
 
         do {
-            try await serviceRegistry.fluidAudioTranscriptionService.loadModel(for: model)
-            isCurrentModelLoaded = await serviceRegistry.fluidAudioTranscriptionService.isModelLoaded
+            try await fluidAudioService.loadModel()
+            isCurrentModelLoaded = await fluidAudioService.isModelLoaded
         } catch {
             logger.error("Model load failed: \(error, privacy: .public)")
         }
