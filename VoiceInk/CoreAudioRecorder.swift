@@ -78,8 +78,8 @@ final class CoreAudioRecorder: @unchecked Sendable {
 
     /// Called from the recorder processing queue with raw PCM data (16-bit, 16kHz, mono) for streaming.
     private let audioChunkLock = NSLock()
-    private var _onAudioChunk: ((_ data: Data) -> Void)?
-    var onAudioChunk: ((_ data: Data) -> Void)? {
+    private var _onAudioChunk: (@Sendable (_ data: Data) -> Void)?
+    var onAudioChunk: (@Sendable (_ data: Data) -> Void)? {
         get {
             audioChunkLock.lock()
             defer { audioChunkLock.unlock() }

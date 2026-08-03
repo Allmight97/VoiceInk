@@ -3,34 +3,111 @@ import AVFoundation
 import CoreAudio
 import os
 
+struct CaptureMeter: Sendable, Equatable {
+    let averagePower: Float
+    let peakPower: Float
+}
+
+protocol RecordingCapture: Sendable {
+    func prepare(deviceID: AudioDeviceID) async throws
+    func startRecording(
+        toOutputFile url: URL,
+        deviceID: AudioDeviceID,
+        onAudioChunk: (@Sendable (Data) -> Void)?
+    ) async throws
+    func stopRecording() async
+    func teardown() async
+    func switchDevice(to deviceID: AudioDeviceID) async throws
+    func meter() async -> CaptureMeter
+}
+
+actor CaptureSession: RecordingCapture {
+    private let recorder: CoreAudioRecorder
+    private var isRecording = false
+
+    init(recorder: CoreAudioRecorder = CoreAudioRecorder()) {
+        self.recorder = recorder
+    }
+
+    func prepare(deviceID: AudioDeviceID) async throws {
+        guard !isRecording else { return }
+        try recorder.prepare(deviceID: deviceID)
+    }
+
+    func startRecording(
+        toOutputFile url: URL,
+        deviceID: AudioDeviceID,
+        onAudioChunk: (@Sendable (Data) -> Void)?
+    ) async throws {
+        recorder.onAudioChunk = onAudioChunk
+        do {
+            try recorder.startRecording(toOutputFile: url, deviceID: deviceID)
+            isRecording = true
+        } catch {
+            recorder.onAudioChunk = nil
+            throw error
+        }
+    }
+
+    func stopRecording() async {
+        recorder.stopRecording()
+        isRecording = false
+        recorder.onAudioChunk = nil
+    }
+
+    func teardown() async {
+        recorder.teardown()
+        isRecording = false
+        recorder.onAudioChunk = nil
+    }
+
+    func switchDevice(to deviceID: AudioDeviceID) async throws {
+        guard isRecording else {
+            throw CoreAudioRecorderError.audioUnitNotInitialized
+        }
+        try recorder.switchDevice(to: deviceID)
+    }
+
+    func meter() async -> CaptureMeter {
+        CaptureMeter(
+            averagePower: recorder.averagePower,
+            peakPower: recorder.peakPower
+        )
+    }
+}
+
 @MainActor
 class Recorder: NSObject, ObservableObject {
-    private var recorder: CoreAudioRecorder?
+    private let capture: any RecordingCapture
+    private let currentDeviceID: () -> AudioDeviceID
+    private let defaults: UserDefaults
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "Recorder")
     private let deviceManager = AudioDeviceManager.shared
     private var deviceSwitchObserver: NSObjectProtocol?
     private var audioDeviceChangedObserver: NSObjectProtocol?
     private var isReconfiguring = false
+    private var lifecycleGeneration = 0
     @Published var audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
-    private var audioMeterUpdateTimer: DispatchSourceTimer?
-    private let audioMeterQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audiometer", qos: .userInteractive)
-    /// Dedicated serial queue for hardware setup.
-    private let audioSetupQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audioSetup", qos: .userInitiated)
-    private let smoothedValuesLock = NSLock()
+    private var audioMeterTask: Task<Void, Never>?
     private var smoothedAverage: Float = 0
     private var smoothedPeak: Float = 0
 
-    /// Audio chunk callback for streaming. Can be updated while recording;
-    /// changes are forwarded to the live CoreAudioRecorder.
-    var onAudioChunk: ((_ data: Data) -> Void)? {
-        didSet { recorder?.onAudioChunk = onAudioChunk }
-    }
+    /// Audio chunk callback for streaming. The capture actor snapshots it
+    /// immediately before a recording starts.
+    var onAudioChunk: (@Sendable (_ data: Data) -> Void)?
     
     enum RecorderError: Error {
         case couldNotStartRecording
     }
     
-    override init() {
+    init(
+        capture: any RecordingCapture = CaptureSession(),
+        currentDeviceID: @escaping () -> AudioDeviceID = { AudioDeviceManager.shared.getCurrentDevice() },
+        defaults: UserDefaults = .standard
+    ) {
+        self.capture = capture
+        self.currentDeviceID = currentDeviceID
+        self.defaults = defaults
         super.init()
         setupDeviceSwitchObserver()
         setupAudioDeviceChangedObserver()
@@ -64,7 +141,7 @@ class Recorder: NSObject, ObservableObject {
 
     private func handleDeviceSwitchRequired(_ notification: Notification) async {
         guard !isReconfiguring else { return }
-        guard let recorder = recorder else { return }
+        guard deviceManager.isRecordingActive else { return }
         guard let userInfo = notification.userInfo,
               let newDeviceID = userInfo["newDeviceID"] as? AudioDeviceID else {
             logger.error("Device switch notification missing newDeviceID")
@@ -78,16 +155,7 @@ class Recorder: NSObject, ObservableObject {
         logger.notice("🎙️ Device switch required: switching to device \(newDeviceID, privacy: .public)")
 
         do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                audioSetupQueue.async {
-                    do {
-                        try recorder.switchDevice(to: newDeviceID)
-                        continuation.resume()
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+            try await capture.switchDevice(to: newDeviceID)
 
             // Notify user about the switch
             if let deviceName = deviceManager.availableDevices.first(where: { $0.id == newDeviceID })?.name {
@@ -109,10 +177,12 @@ class Recorder: NSObject, ObservableObject {
     }
 
     func startRecording(toOutputFile url: URL) async throws {
+        lifecycleGeneration += 1
+        let generation = lifecycleGeneration
         deviceManager.isRecordingActive = true
 
-        let currentDeviceID = deviceManager.getCurrentDevice()
-        let lastDeviceID = UserDefaults.standard.string(forKey: "lastUsedMicrophoneDeviceID")
+        let currentDeviceID = currentDeviceID()
+        let lastDeviceID = defaults.string(forKey: "lastUsedMicrophoneDeviceID")
         if String(currentDeviceID) != lastDeviceID {
             if let deviceName = deviceManager.availableDevices.first(where: { $0.id == currentDeviceID })?.name {
                 NotificationManager.shared.showNotification(
@@ -121,31 +191,27 @@ class Recorder: NSObject, ObservableObject {
                 )
             }
         }
-        UserDefaults.standard.set(String(currentDeviceID), forKey: "lastUsedMicrophoneDeviceID")
+        defaults.set(String(currentDeviceID), forKey: "lastUsedMicrophoneDeviceID")
 
         let deviceID = currentDeviceID
 
-        audioMeterUpdateTimer?.cancel()
-
-        let coreAudioRecorder = recorder ?? CoreAudioRecorder()
-        coreAudioRecorder.onAudioChunk = onAudioChunk
-        recorder = coreAudioRecorder
-
         do {
-            // Offload hardware start to avoid shortcut lag.
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                audioSetupQueue.async {
-                    do {
-                        try coreAudioRecorder.startRecording(toOutputFile: url, deviceID: deviceID)
-                        continuation.resume()
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
+            try await capture.startRecording(
+                toOutputFile: url,
+                deviceID: deviceID,
+                onAudioChunk: onAudioChunk
+            )
+            guard lifecycleGeneration == generation, deviceManager.isRecordingActive else {
+                // A stop or cancellation arrived while capture was starting.
+                await capture.stopRecording()
+                return
             }
-
-            startAudioMeterTimer()
+            startAudioMeterTask()
         } catch {
+            guard lifecycleGeneration == generation, deviceManager.isRecordingActive else {
+                await capture.stopRecording()
+                return
+            }
             logger.error("Failed to start recording deviceID=\(deviceID, privacy: .public) file=\(url.lastPathComponent, privacy: .public) error=\(error, privacy: .public)")
             await stopRecording()
             throw RecorderError.couldNotStartRecording
@@ -153,24 +219,15 @@ class Recorder: NSObject, ObservableObject {
     }
 
     func stopRecording() async {
-        audioMeterUpdateTimer?.cancel()
-        audioMeterUpdateTimer = nil
+        lifecycleGeneration += 1
+        audioMeterTask?.cancel()
+        audioMeterTask = nil
 
-        // Capture current recorder to stop it on the serial hardware queue.
-        let currentRecorder = self.recorder
-
-        await withCheckedContinuation { continuation in
-            audioSetupQueue.async {
-                currentRecorder?.stopRecording()
-                continuation.resume()
-            }
-        }
+        await capture.stopRecording()
         onAudioChunk = nil
 
-        smoothedValuesLock.lock()
         smoothedAverage = 0
         smoothedPeak = 0
-        smoothedValuesLock.unlock()
 
         audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
         deviceManager.isRecordingActive = false
@@ -191,14 +248,22 @@ class Recorder: NSObject, ObservableObject {
         }
     }
 
-    private func startAudioMeterTimer() {
-        let timer = DispatchSource.makeTimerSource(queue: audioMeterQueue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(17)) 
-        timer.setEventHandler { [weak self] in
-            self?.updateAudioMeter()
+    private func startAudioMeterTask() {
+        audioMeterTask?.cancel()
+        let capture = self.capture
+        audioMeterTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                let meter = await capture.meter()
+                guard !Task.isCancelled else { return }
+                self?.updateAudioMeter(from: meter)
+
+                do {
+                    try await Task.sleep(for: .milliseconds(17))
+                } catch {
+                    return
+                }
+            }
         }
-        timer.resume()
-        audioMeterUpdateTimer = timer
     }
 
     private func schedulePrepareForCurrentDevice(reason: String) {
@@ -206,79 +271,64 @@ class Recorder: NSObject, ObservableObject {
             return
         }
 
-        let deviceID = deviceManager.getCurrentDevice()
+        let deviceID = currentDeviceID()
         guard deviceID != 0 else {
-            recorder?.teardown()
+            Task { await capture.teardown() }
             return
         }
 
-        let coreAudioRecorder = recorder ?? CoreAudioRecorder()
-        coreAudioRecorder.onAudioChunk = onAudioChunk
-        recorder = coreAudioRecorder
-
-        audioSetupQueue.async { [logger] in
+        let capture = self.capture
+        Task { @MainActor [weak self, capture] in
             do {
-                try coreAudioRecorder.prepare(deviceID: deviceID)
+                try await capture.prepare(deviceID: deviceID)
             } catch {
-                logger.warning("Recorder prepare failed reason=\(reason, privacy: .public) deviceID=\(deviceID, privacy: .public) error=\(error, privacy: .public)")
+                self?.logger.warning("Recorder prepare failed reason=\(reason, privacy: .public) deviceID=\(deviceID, privacy: .public) error=\(error, privacy: .public)")
             }
         }
     }
 
-    private func updateAudioMeter() {
-        guard let recorder = recorder else { return }
-
-        // Sample audio levels (thread-safe read)
-        let averagePower = recorder.averagePower
-        let peakPower = recorder.peakPower
-
+    private func updateAudioMeter(from meter: CaptureMeter) {
         // Normalize values
         let minVisibleDb: Float = -60.0
         let maxVisibleDb: Float = 0.0
 
         let normalizedAverage: Float
-        if averagePower < minVisibleDb {
+        if meter.averagePower < minVisibleDb {
             normalizedAverage = 0.0
-        } else if averagePower >= maxVisibleDb {
+        } else if meter.averagePower >= maxVisibleDb {
             normalizedAverage = 1.0
         } else {
-            normalizedAverage = (averagePower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
+            normalizedAverage = (meter.averagePower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
         }
 
         let normalizedPeak: Float
-        if peakPower < minVisibleDb {
+        if meter.peakPower < minVisibleDb {
             normalizedPeak = 0.0
-        } else if peakPower >= maxVisibleDb {
+        } else if meter.peakPower >= maxVisibleDb {
             normalizedPeak = 1.0
         } else {
-            normalizedPeak = (peakPower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
+            normalizedPeak = (meter.peakPower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
         }
 
-        // Apply EMA smoothing with thread-safe access
-        smoothedValuesLock.lock()
+        // The task and publication both run on the main actor; no lock or
+        // cross-queue UI hop is needed.
         smoothedAverage = smoothedAverage * 0.6 + normalizedAverage * 0.4
         smoothedPeak = smoothedPeak * 0.6 + normalizedPeak * 0.4
-        let newAudioMeter = AudioMeter(averagePower: Double(smoothedAverage), peakPower: Double(smoothedPeak))
-        smoothedValuesLock.unlock()
-
-        // Dispatch to main queue for UI updates (more efficient than Task)
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.audioMeter = newAudioMeter
-        }
+        audioMeter = AudioMeter(averagePower: Double(smoothedAverage), peakPower: Double(smoothedPeak))
     }
     
     // MARK: - Cleanup
 
     deinit {
-        audioMeterUpdateTimer?.cancel()
+        audioMeterTask?.cancel()
         if let observer = deviceSwitchObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = audioDeviceChangedObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        recorder?.teardown()
+        let capture = self.capture
+        Task { await capture.teardown() }
     }
 }
 

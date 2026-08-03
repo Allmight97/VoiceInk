@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Synchronization
 
 /// Shared signposter for profiling the dictation hot path in Instruments.
 enum LeanSignpost {
@@ -11,38 +12,40 @@ enum LeanSignpost {
 
 /// Thread-safe accumulator for the recorder's converted 16 kHz mono PCM16
 /// chunks, so transcription reads from memory instead of re-reading the WAV.
-final class RecordingSampleBuffer: @unchecked Sendable {
-    /// 30 minutes of 16 kHz mono PCM16.
-    private static let maxBytes = 16_000 * 2 * 60 * 30
+final class RecordingSampleBuffer: Sendable {
+    private struct State: Sendable {
+        var data: Data
+        var overflowed = false
+    }
 
-    private let lock = NSLock()
-    private var data: Data
-    private var didReportOverflow = false
+    private let state: Mutex<State>
+    private let byteLimit: Int
 
     /// True once the 30-minute cap was hit; further chunks are dropped.
-    private(set) var overflowed = false
+    var overflowed: Bool {
+        state.withLock { $0.overflowed }
+    }
 
-    init() {
+    init(maxBytes: Int = 16_000 * 2 * 60 * 30) {
         // Reserve ~5 minutes up front to avoid repeated growth copies.
-        data = Data(capacity: 16_000 * 2 * 60 * 5)
+        byteLimit = maxBytes
+        state = Mutex(State(data: Data(capacity: min(maxBytes, 16_000 * 2 * 60 * 5))))
     }
 
     func append(_ chunk: Data) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard data.count + chunk.count <= Self.maxBytes else {
-            overflowed = true
-            return
+        state.withLock { state in
+            guard state.data.count + chunk.count <= byteLimit else {
+                state.overflowed = true
+                return
+            }
+            state.data.append(chunk)
         }
-        data.append(chunk)
     }
 
     /// Non-consuming copy of the samples accumulated so far (live-transcript
     /// partial passes read this while recording continues).
     func snapshotFloatSamples() -> [Float] {
-        lock.lock()
-        let bytes = data
-        lock.unlock()
+        let bytes = state.withLock { $0.data }
 
         return bytes.withUnsafeBytes { raw -> [Float] in
             let int16Buffer = raw.bindMemory(to: Int16.self)
@@ -55,10 +58,11 @@ final class RecordingSampleBuffer: @unchecked Sendable {
     /// Converts the accumulated PCM16 bytes to normalized Float samples and
     /// releases the byte storage.
     func takeFloatSamples() -> [Float] {
-        lock.lock()
-        let bytes = data
-        data = Data()
-        lock.unlock()
+        let bytes = state.withLock { state in
+            let bytes = state.data
+            state.data = Data()
+            return bytes
+        }
 
         return bytes.withUnsafeBytes { raw -> [Float] in
             let int16Buffer = raw.bindMemory(to: Int16.self)
@@ -69,9 +73,7 @@ final class RecordingSampleBuffer: @unchecked Sendable {
     }
 
     func discard() {
-        lock.lock()
-        data = Data()
-        lock.unlock()
+        state.withLock { $0.data = Data() }
     }
 }
 

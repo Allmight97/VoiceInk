@@ -126,7 +126,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
         let buffer = RecordingSampleBuffer()
         sampleBuffer = buffer
-        recorder.onAudioChunk = { chunk in
+        recorder.onAudioChunk = { @Sendable chunk in
             buffer.append(chunk)
         }
 
