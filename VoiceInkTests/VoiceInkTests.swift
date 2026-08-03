@@ -14,6 +14,43 @@ struct VoiceInkTests {
         #expect(filtered == "Keep this.")
     }
 
+    @Test("Core Audio byte contracts reject malformed property sizes")
+    func coreAudioByteContracts() {
+        let scalarBytes = MemoryLayout<UInt32>.size
+        #expect(CoreAudioByteContract.hasExactSize(UInt32(scalarBytes), expectedBytes: scalarBytes))
+        #expect(!CoreAudioByteContract.hasExactSize(UInt32(scalarBytes - 1), expectedBytes: scalarBytes))
+        #expect(!CoreAudioByteContract.hasExactSize(UInt32(scalarBytes + 1), expectedBytes: scalarBytes))
+
+        let deviceStride = MemoryLayout<AudioDeviceID>.stride
+        #expect(CoreAudioByteContract.elementCount(returnedBytes: 0, elementStride: deviceStride) == 0)
+        #expect(CoreAudioByteContract.elementCount(
+            returnedBytes: UInt32(deviceStride * 2),
+            elementStride: deviceStride
+        ) == 2)
+        #expect(CoreAudioByteContract.elementCount(
+            returnedBytes: UInt32(deviceStride + 1),
+            elementStride: deviceStride
+        ) == nil)
+
+        let bufferHeaderBytes = MemoryLayout<AudioBufferList>.size
+        let bufferStride = MemoryLayout<AudioBuffer>.stride
+        #expect(CoreAudioByteContract.variableStructByteCount(
+            elementCount: 1,
+            minimumHeaderBytes: bufferHeaderBytes,
+            elementStride: bufferStride
+        ) == bufferHeaderBytes)
+        #expect(CoreAudioByteContract.variableStructByteCount(
+            elementCount: 3,
+            minimumHeaderBytes: bufferHeaderBytes,
+            elementStride: bufferStride
+        ) == bufferHeaderBytes + bufferStride * 2)
+        #expect(CoreAudioByteContract.variableStructByteCount(
+            elementCount: 0,
+            minimumHeaderBytes: bufferHeaderBytes,
+            elementStride: bufferStride
+        ) == nil)
+    }
+
     @Test("Menu status and recorder panel presentation derive from engine state")
     @MainActor
     func presentationDerivationsStayStateOwned() {

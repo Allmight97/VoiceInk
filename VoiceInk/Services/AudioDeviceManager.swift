@@ -62,7 +62,12 @@ class AudioDeviceManager: ObservableObject {
             &deviceID
         )
 
-        guard status == noErr, deviceID != 0 else {
+        guard status == noErr,
+              CoreAudioByteContract.hasExactSize(
+                  propertySize,
+                  expectedBytes: MemoryLayout<AudioDeviceID>.size
+              ),
+              deviceID != 0 else {
             logger.error("Failed to get system default device: \(status, privacy: .public)")
             return nil
         }
@@ -138,32 +143,52 @@ class AudioDeviceManager: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
         
-        var result = AudioObjectGetPropertyDataSize(
+        let result = AudioObjectGetPropertyDataSize(
             AudioObjectID(kAudioObjectSystemObject),
             &address,
             0,
             nil,
             &propertySize
         )
-        
-        let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
-        
-        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
-        
-        result = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &propertySize,
-            &deviceIDs
-        )
-        
-        if result != noErr {
-            logger.error("Error getting audio devices: \(result, privacy: .public)")
+
+        guard result == noErr,
+              let deviceCount = CoreAudioByteContract.elementCount(
+                  returnedBytes: propertySize,
+                  elementStride: MemoryLayout<AudioDeviceID>.stride
+              ) else {
+            logger.error("Invalid audio device list size: status=\(result, privacy: .public), bytes=\(propertySize, privacy: .public)")
             return
         }
-        
+
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        if deviceCount > 0 {
+            var returnedBytes = propertySize
+            let dataStatus: OSStatus = deviceIDs.withUnsafeMutableBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else {
+                    return kAudio_ParamError
+                }
+                return AudioObjectGetPropertyData(
+                    AudioObjectID(kAudioObjectSystemObject),
+                    &address,
+                    0,
+                    nil,
+                    &returnedBytes,
+                    baseAddress
+                )
+            }
+
+            guard dataStatus == noErr,
+                  let returnedDeviceCount = CoreAudioByteContract.elementCount(
+                      returnedBytes: returnedBytes,
+                      elementStride: MemoryLayout<AudioDeviceID>.stride
+                  ),
+                  returnedDeviceCount <= deviceCount else {
+                logger.error("Invalid audio device list response: status=\(dataStatus, privacy: .public), bytes=\(returnedBytes, privacy: .public)")
+                return
+            }
+            deviceIDs.removeLast(deviceCount - returnedDeviceCount)
+        }
+
         let devices = deviceIDs.compactMap { deviceID -> (id: AudioDeviceID, uid: String, name: String)? in
             guard let name = getDeviceName(deviceID: deviceID),
                   let uid = getDeviceUID(deviceID: deviceID),
@@ -190,9 +215,10 @@ class AudioDeviceManager: ObservableObject {
     }
     
     func getDeviceName(deviceID: AudioDeviceID) -> String? {
-        let name: CFString? = getDeviceProperty(deviceID: deviceID,
-                                              selector: kAudioDevicePropertyDeviceNameCFString)
-        return name as String?
+        getDeviceStringProperty(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyDeviceNameCFString
+        )
     }
     
     private func isValidInputDevice(deviceID: AudioDeviceID) -> Bool {
@@ -216,24 +242,44 @@ class AudioDeviceManager: ObservableObject {
             return false
         }
 
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(propertySize))
-        defer { bufferList.deallocate() }
+        let storageSize = Int(propertySize)
+        guard storageSize >= MemoryLayout<AudioBufferList>.size else {
+            logger.error("Audio stream configuration is smaller than an AudioBufferList header")
+            return false
+        }
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: storageSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { storage.deallocate() }
 
+        var returnedBytes = propertySize
         result = AudioObjectGetPropertyData(
             deviceID,
             &address,
             0,
             nil,
-            &propertySize,
-            bufferList
+            &returnedBytes,
+            storage
         )
 
-        if result != noErr {
+        guard result == noErr,
+              returnedBytes <= propertySize,
+              returnedBytes >= UInt32(MemoryLayout<AudioBufferList>.size) else {
             logger.error("Error getting stream configuration for device \(deviceID, privacy: .public): \(result, privacy: .public)")
             return false
         }
 
+        let bufferList = storage.assumingMemoryBound(to: AudioBufferList.self)
         let bufferCount = Int(bufferList.pointee.mNumberBuffers)
+        guard let requiredBytes = CoreAudioByteContract.variableStructByteCount(
+            elementCount: bufferCount,
+            minimumHeaderBytes: MemoryLayout<AudioBufferList>.size,
+            elementStride: MemoryLayout<AudioBuffer>.stride
+        ),
+        requiredBytes <= Int(returnedBytes) else {
+            return false
+        }
         return bufferCount > 0
     }
 
@@ -461,15 +507,17 @@ class AudioDeviceManager: ObservableObject {
     }
     
     private func getDeviceUID(deviceID: AudioDeviceID) -> String? {
-        let uid: CFString? = getDeviceProperty(deviceID: deviceID,
-                                             selector: kAudioDevicePropertyDeviceUID)
-        return uid as String?
+        getDeviceStringProperty(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyDeviceUID
+        )
     }
 
     func getDeviceModelUID(deviceID: AudioDeviceID) -> String? {
-        let uid: CFString? = getDeviceProperty(deviceID: deviceID,
-                                              selector: kAudioDevicePropertyModelUID)
-        return uid as String?
+        getDeviceStringProperty(
+            deviceID: deviceID,
+            selector: kAudioDevicePropertyModelUID
+        )
     }
 
     private func findAvailableDevice(uid: String, modelUID: String?) -> (id: AudioDeviceID, uid: String, name: String)? {
@@ -543,14 +591,23 @@ class AudioDeviceManager: ObservableObject {
         )
     }
     
-    private func getDeviceProperty<T>(deviceID: AudioDeviceID,
-                                    selector: AudioObjectPropertySelector,
-                                    scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> T? {
+    private func getDeviceStringProperty(
+        deviceID: AudioDeviceID,
+        selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal
+    ) -> String? {
         guard deviceID != 0 else { return nil }
-        
+
         var address = createPropertyAddress(selector: selector, scope: scope)
-        var propertySize = UInt32(MemoryLayout<T>.size)
-        var property: T? = nil
+        let storageSize = MemoryLayout<UnsafeRawPointer?>.size
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: storageSize,
+            alignment: MemoryLayout<UnsafeRawPointer?>.alignment
+        )
+        defer { storage.deallocate() }
+        let emptyProperty: UnsafeRawPointer? = nil
+        storage.storeBytes(of: emptyProperty, as: UnsafeRawPointer?.self)
+        var propertySize = UInt32(storageSize)
         
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -558,15 +615,18 @@ class AudioDeviceManager: ObservableObject {
             0,
             nil,
             &propertySize,
-            &property
+            storage
         )
-        
-        if status != noErr {
+
+        guard status == noErr,
+              CoreAudioByteContract.hasExactSize(propertySize, expectedBytes: storageSize),
+              let propertyRef = storage.load(as: UnsafeRawPointer?.self) else {
             logger.error("Failed to get device property \(selector, privacy: .public) for device \(deviceID, privacy: .public): \(status, privacy: .public)")
             return nil
         }
-        
-        return property
+
+        let property = Unmanaged<CFString>.fromOpaque(propertyRef).takeRetainedValue()
+        return property as String
     }
     
     private func notifyDeviceChange() {
