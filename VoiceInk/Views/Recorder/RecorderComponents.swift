@@ -16,7 +16,11 @@ struct RecorderRecordButton: View {
     }
 
     private var isDisabled: Bool {
-        switch recordingState {
+        Self.isDisabled(for: recordingState)
+    }
+
+    static func isDisabled(for state: RecordingState) -> Bool {
+        switch state {
         case .idle, .recording:
             return false
         case .starting, .transcribing, .enhancing, .busy:
@@ -78,7 +82,11 @@ struct RecorderRecordButton: View {
     }
 
     private var accessibilityLabel: String {
-        switch recordingState {
+        Self.accessibilityLabel(for: recordingState)
+    }
+
+    static func accessibilityLabel(for state: RecordingState) -> String {
+        switch state {
         case .idle:
             return String(localized: "Start recording")
         case .starting:
@@ -147,6 +155,7 @@ struct ProcessingIndicator: View {
     }
 }
 
+@MainActor
 struct ProgressAnimation: View {
     let color: Color
     let animationSpeed: Double
@@ -182,8 +191,10 @@ struct ProgressAnimation: View {
         timer?.invalidate()
         currentDot = 0
         timer = Timer.scheduledTimer(withTimeInterval: animationSpeed, repeats: true) { _ in
-            currentDot = (currentDot + 1) % (dotCount + 2)
-            if currentDot > dotCount { currentDot = -1 }
+            MainActor.assumeIsolated {
+                currentDot = (currentDot + 1) % (dotCount + 2)
+                if currentDot > dotCount { currentDot = -1 }
+            }
         }
     }
 }

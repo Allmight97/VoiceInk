@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import CoreAudio
+import SwiftUI
 @testable import VoiceInk
 
 @Suite(.serialized)
@@ -11,6 +12,63 @@ struct VoiceInkTests {
         let filtered = TranscriptionOutputFilter.filter("Keep [aside]   this.")
 
         #expect(filtered == "Keep this.")
+    }
+
+    @Test("Menu status and recorder panel presentation derive from engine state")
+    @MainActor
+    func presentationDerivationsStayStateOwned() {
+        let expected: [(RecordingState, String, String, Bool, String, Bool)] = [
+            (.idle, "Idle", "Start Dictation", false, "Start recording", false),
+            (.starting, "Starting", "Start Dictation", true, "Starting recording", true),
+            (.recording, "Recording", "Stop Dictation", false, "Stop recording", false),
+            (.transcribing, "Transcribing", "Start Dictation", true, "Transcribing recording", true),
+            (.enhancing, "Processing", "Start Dictation", false, "Processing recording", true),
+            (.busy, "Busy", "Start Dictation", false, "Recorder unavailable", true)
+        ]
+
+        for (state, status, actionTitle, actionDisabled, accessibilityLabel, buttonDisabled) in expected {
+            #expect(MenuBarView.statusText(for: state) == status)
+            #expect(MenuBarView.actionTitle(for: state) == actionTitle)
+            #expect(MenuBarView.isActionDisabled(for: state) == actionDisabled)
+            #expect(RecorderRecordButton.accessibilityLabel(for: state) == accessibilityLabel)
+            #expect(RecorderRecordButton.isDisabled(for: state) == buttonDisabled)
+        }
+
+        #expect(MiniRecorderView<TestRecorderState>.shouldShowLiveTranscript(
+            showLiveTranscript: true,
+            recordingState: .recording,
+            partialTranscript: "hello"
+        ))
+        #expect(!MiniRecorderView<TestRecorderState>.shouldShowLiveTranscript(
+            showLiveTranscript: true,
+            recordingState: .recording,
+            partialTranscript: ""
+        ))
+        #expect(!MiniRecorderView<TestRecorderState>.shouldShowLiveTranscript(
+            showLiveTranscript: true,
+            recordingState: .idle,
+            partialTranscript: "hello"
+        ))
+    }
+
+    @Test("Stale notification dismissals cannot close a replacement")
+    @MainActor
+    func notificationReplacementDismissalUsesCurrentToken() {
+        let first = UUID()
+        let replacement = UUID()
+
+        #expect(NotificationManager.shouldDismiss(
+            notificationID: first,
+            currentNotificationID: first
+        ))
+        #expect(!NotificationManager.shouldDismiss(
+            notificationID: first,
+            currentNotificationID: replacement
+        ))
+        #expect(!NotificationManager.shouldDismiss(
+            notificationID: replacement,
+            currentNotificationID: nil
+        ))
     }
 
     @Test("Recording sample buffer enforces its byte limit")
@@ -191,6 +249,12 @@ private struct TestDefaults {
 
 private func testOutputURL() -> URL {
     URL(fileURLWithPath: "/dev/null")
+}
+
+@MainActor
+private final class TestRecorderState: ObservableObject, RecorderStateProvider {
+    @Published var recordingState: RecordingState = .idle
+    @Published var partialTranscript = ""
 }
 
 private enum TestRecordingCaptureError: Error {

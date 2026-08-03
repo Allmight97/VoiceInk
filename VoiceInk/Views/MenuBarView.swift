@@ -16,12 +16,12 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button(engine.recordingState == .recording ? "Stop Dictation" : "Start Dictation") {
+        Button(Self.actionTitle(for: engine.recordingState)) {
             Task { @MainActor in
                 await recorderUIManager.toggleRecorderPanel()
             }
         }
-        .disabled(engine.recordingState == .starting || engine.recordingState == .transcribing)
+        .disabled(Self.isActionDisabled(for: engine.recordingState))
 
         Button("Copy Last Transcription") {
             if let text = TranscriptionLog.lastText() {
@@ -46,8 +46,8 @@ struct MenuBarView: View {
         }
     }
 
-    private var statusText: String {
-        switch engine.recordingState {
+    static func statusText(for state: RecordingState) -> String {
+        switch state {
         case .idle:
             return "Idle"
         case .starting:
@@ -61,5 +61,17 @@ struct MenuBarView: View {
         case .busy:
             return "Busy"
         }
+    }
+
+    static func actionTitle(for state: RecordingState) -> String {
+        state == .recording ? "Stop Dictation" : "Start Dictation"
+    }
+
+    static func isActionDisabled(for state: RecordingState) -> Bool {
+        state == .starting || state == .transcribing
+    }
+
+    private var statusText: String {
+        Self.statusText(for: engine.recordingState)
     }
 }

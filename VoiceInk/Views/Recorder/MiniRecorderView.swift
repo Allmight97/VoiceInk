@@ -14,9 +14,21 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     private let expandedCornerRadius: CGFloat = 14
 
     private var hasLiveTranscript: Bool {
+        Self.shouldShowLiveTranscript(
+            showLiveTranscript: showLiveTranscript,
+            recordingState: stateProvider.recordingState,
+            partialTranscript: stateProvider.partialTranscript
+        )
+    }
+
+    static func shouldShowLiveTranscript(
+        showLiveTranscript: Bool,
+        recordingState: RecordingState,
+        partialTranscript: String
+    ) -> Bool {
         showLiveTranscript &&
-            stateProvider.recordingState == .recording &&
-            !stateProvider.partialTranscript.isEmpty
+            recordingState == .recording &&
+            !partialTranscript.isEmpty
     }
 
     private var controlBar: some View {
