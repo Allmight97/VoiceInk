@@ -2,6 +2,7 @@ import Foundation
 
 enum RecorderDisplaySettingsKeys {
     static let showLiveTranscript = "ShowLiveTranscript"
+    static let showLiveTranscriptDefault = true
     static let panelPosition = "RecorderPanelPosition"
 }
 
@@ -40,7 +41,7 @@ enum AppDefaults {
             transcriptionBackend: TranscriptionBackendID.parakeetV2.rawValue,
             "restoreClipboardAfterPaste": false,
             "clipboardRestoreDelay": 2.0,
-            RecorderDisplaySettingsKeys.showLiveTranscript: false,
+            RecorderDisplaySettingsKeys.showLiveTranscript: RecorderDisplaySettingsKeys.showLiveTranscriptDefault,
             RecorderDisplaySettingsKeys.panelPosition: RecorderPanelPosition.bottomCenter.rawValue,
             enableHistoryLog: true,
             soundFeedbackEnabled: true,

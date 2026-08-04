@@ -4,7 +4,7 @@ import Speech
 /// Owns state observations and explicit acquisition for one locale at a time.
 ///
 /// The transcription backend only calls `refresh`; acquisition and reservation
-/// release are exposed separately for a future Settings surface. Asset
+/// release are exposed separately for Settings. Asset
 /// installation requests auto-reserve locales when needed. This manager does
 /// not reserve on prepare or release on cleanup: subscriptions remain stable
 /// until an explicit user action calls `release(locale:)`.
@@ -70,7 +70,7 @@ actor AppleSpeechAssetManager {
                 return refreshed
             }
 
-            states[key] = AppleSpeechAssetStateMachine.downloading(progress: installation.progress())
+            states[key] = AppleSpeechAssetStateMachine.downloading()
             try await installation.downloadAndInstall()
             return await refresh(for: locale)
         } catch {
@@ -80,9 +80,6 @@ actor AppleSpeechAssetManager {
         }
     }
 
-    func clearCachedState(for locale: Locale) {
-        states.removeValue(forKey: locale.identifier)
-    }
 }
 
 struct SystemAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
@@ -117,10 +114,9 @@ struct SystemAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
             return nil
         }
 
-        return AppleSpeechAssetInstallation(
-            progress: { request.progress.fractionCompleted },
-            downloadAndInstall: { try await request.downloadAndInstall() }
-        )
+        return AppleSpeechAssetInstallation {
+            try await request.downloadAndInstall()
+        }
     }
 
     func reservedLocales() async -> [Locale] {

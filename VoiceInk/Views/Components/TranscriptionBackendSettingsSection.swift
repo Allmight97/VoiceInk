@@ -221,12 +221,8 @@ struct TranscriptionBackendSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if case .downloading(let progress) = appleSpeechState {
-                if let progress {
-                    ProgressView(value: progress)
-                } else {
-                    ProgressView()
-                }
+            if case .downloading = appleSpeechState {
+                ProgressView()
             }
 
             if case .failed(let message) = appleSpeechState {
@@ -328,7 +324,7 @@ struct TranscriptionBackendSettingsSection: View {
     private func acquire(locale: Locale) {
         guard !isAcquiring else { return }
         isAcquiring = true
-        appleSpeechState = .downloading(progress: nil)
+        appleSpeechState = .downloading
 
         Task {
             defer { isAcquiring = false }

@@ -39,7 +39,8 @@ private struct GeneralSettingsView: View {
     @AppStorage(AppDefaults.soundFeedbackEnabled) private var soundFeedback = true
     @AppStorage(AppDefaults.unloadModelAfterIdleMinutes) private var unloadMinutes = 0
     @AppStorage(AppDefaults.debugKeepRecordings) private var debugKeepRecordings = false
-    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript)
+    private var showLiveTranscript = RecorderDisplaySettingsKeys.showLiveTranscriptDefault
     @AppStorage(RecorderDisplaySettingsKeys.panelPosition) private var panelPosition = RecorderPanelPosition.bottomCenter.rawValue
     @AppStorage(AppDefaults.enableHistoryLog) private var historyLog = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled

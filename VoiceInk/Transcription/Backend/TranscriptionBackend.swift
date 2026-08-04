@@ -16,44 +16,24 @@ protocol TranscriptionBackend: Sendable {
     func cleanup() async
 }
 
-enum TranscriptionBackendError: Error, Equatable, LocalizedError, Sendable {
-    case unavailable(TranscriptionBackendID)
-
-    var errorDescription: String? {
-        switch self {
-        case .unavailable(.parakeetV2):
-            return String(localized: "Parakeet V2 is not available for transcription.")
-        case .unavailable(.appleSpeech):
-            return String(localized: "Apple Speech is not available for transcription.")
-        }
-    }
-}
-
 /// Routes the two product-owned backends without a provider/plugin registry.
-///
-/// The Apple Speech adapter is intentionally optional in this slice. Until
-/// that adapter is implemented and injected, selecting Apple Speech fails
-/// explicitly rather than falling back to Parakeet.
 struct TranscriptionBackendRouter: Sendable {
     private let parakeetV2: any TranscriptionBackend
-    private let appleSpeech: (any TranscriptionBackend)?
+    private let appleSpeech: any TranscriptionBackend
 
     init(
         parakeetV2: any TranscriptionBackend,
-        appleSpeech: (any TranscriptionBackend)? = nil
+        appleSpeech: any TranscriptionBackend
     ) {
         self.parakeetV2 = parakeetV2
         self.appleSpeech = appleSpeech
     }
 
-    func backend(for snapshot: TranscriptionBackendSnapshot) throws -> any TranscriptionBackend {
-        switch snapshot.backend {
+    func backend(for configuration: TranscriptionConfiguration) -> any TranscriptionBackend {
+        switch configuration.backend {
         case .parakeetV2:
             return parakeetV2
         case .appleSpeech:
-            guard let appleSpeech else {
-                throw TranscriptionBackendError.unavailable(.appleSpeech)
-            }
             return appleSpeech
         }
     }
@@ -67,7 +47,6 @@ struct TranscriptionBackendRouter: Sendable {
 @MainActor
 protocol TranscriptionSelectionStorage {
     func load() -> TranscriptionConfiguration
-    func save(_ configuration: TranscriptionConfiguration)
 }
 
 @MainActor
@@ -95,23 +74,5 @@ final class UserDefaultsTranscriptionSelectionStorage: TranscriptionSelectionSto
             backend: backend,
             localeIdentifier: defaults.string(forKey: AppDefaults.appleSpeechLocale)
         )
-    }
-
-    func save(_ configuration: TranscriptionConfiguration) {
-        defaults.set(configuration.backend.rawValue, forKey: AppDefaults.transcriptionBackend)
-
-        switch configuration.backend {
-        case .parakeetV2:
-            // Keep the last Apple locale so returning to Apple Speech does not
-            // erase a valid user choice. It remains inapplicable to Parakeet
-            // snapshots until Apple Speech is selected again.
-            break
-        case .appleSpeech:
-            if let localeIdentifier = configuration.localeIdentifier {
-                defaults.set(localeIdentifier, forKey: AppDefaults.appleSpeechLocale)
-            } else {
-                defaults.removeObject(forKey: AppDefaults.appleSpeechLocale)
-            }
-        }
     }
 }

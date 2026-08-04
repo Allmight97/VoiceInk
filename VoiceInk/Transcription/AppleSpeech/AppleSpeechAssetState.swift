@@ -10,7 +10,7 @@ enum AppleSpeechAssetState: Equatable, Sendable {
     case unsupported
     case absent
     case requested
-    case downloading(progress: Double?)
+    case downloading
     case ready
     case reservationLimit
     case failed(message: String)
@@ -33,7 +33,7 @@ enum AppleSpeechAssetStateMachine {
         case .unsupported:
             return .unsupported
         case .downloading:
-            return .downloading(progress: nil)
+            return .downloading
         case .installed:
             return .ready
         case .supported:
@@ -48,8 +48,8 @@ enum AppleSpeechAssetStateMachine {
         .requested
     }
 
-    static func downloading(progress: Double?) -> AppleSpeechAssetState {
-        .downloading(progress: progress)
+    static func downloading() -> AppleSpeechAssetState {
+        .downloading
     }
 
     static func failed(_ error: Error) -> AppleSpeechAssetState {
@@ -63,14 +63,11 @@ enum AppleSpeechAssetStateMachine {
 }
 
 struct AppleSpeechAssetInstallation: Sendable {
-    let progress: @Sendable () -> Double?
     let downloadAndInstall: @Sendable () async throws -> Void
 
     init(
-        progress: @escaping @Sendable () -> Double?,
         downloadAndInstall: @escaping @Sendable () async throws -> Void
     ) {
-        self.progress = progress
         self.downloadAndInstall = downloadAndInstall
     }
 }

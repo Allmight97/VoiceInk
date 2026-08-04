@@ -129,9 +129,7 @@ struct MenuBarView: View {
         guard modelManager.isFluidAudioModelDownloaded(model) else {
             return String(localized: "Not Downloaded")
         }
-        return engine.isCurrentModelLoaded
-            ? String(localized: "Loaded")
-            : String(localized: "Ready")
+        return String(localized: "Ready")
     }
 
     private func refreshSelectedBackendStatus() async {

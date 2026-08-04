@@ -56,6 +56,8 @@ struct VoiceInkTests {
     @Test("Menu status and recorder panel presentation derive from engine state")
     @MainActor
     func presentationDerivationsStayStateOwned() {
+        #expect(RecorderDisplaySettingsKeys.showLiveTranscriptDefault)
+
         let expected: [(RecordingState, String, String, Bool, String, Bool)] = [
             (.idle, "Idle", "Start Dictation", false, "Start recording", false),
             (.starting, "Starting", "Start Dictation", true, "Starting recording", true),
@@ -85,6 +87,25 @@ struct VoiceInkTests {
             showLiveTranscript: true,
             recordingState: .idle,
             partialTranscript: "hello"
+        ))
+        #expect(!MiniRecorderView<TestRecorderState>.shouldShowLiveTranscript(
+            showLiveTranscript: false,
+            recordingState: .recording,
+            partialTranscript: "hello"
+        ))
+
+        let recordingID = UUID()
+        #expect(VoiceInkEngine.shouldContinuePartialTranscription(
+            showLiveTranscript: true,
+            recordingState: .recording,
+            activeRecordingID: recordingID,
+            recordingID: recordingID
+        ))
+        #expect(!VoiceInkEngine.shouldContinuePartialTranscription(
+            showLiveTranscript: false,
+            recordingState: .recording,
+            activeRecordingID: recordingID,
+            recordingID: recordingID
         ))
     }
 
@@ -249,9 +270,9 @@ struct VoiceInkTests {
         #expect(testDefaults.store.string(forKey: AppDefaults.transcriptionBackend) == TranscriptionBackendID.parakeetV2.rawValue)
     }
 
-    @Test("Selection storage persists Apple locale without changing the backend default")
+    @Test("Selection storage loads Apple locale without applying it to Parakeet")
     @MainActor
-    func selectionStoragePersistsLocaleInIsolatedDefaults() {
+    func selectionStorageLoadsLocaleInIsolatedDefaults() {
         let testDefaults = TestSelectionDefaults()
         defer { testDefaults.cleanup() }
         let storage = UserDefaultsTranscriptionSelectionStorage(defaults: testDefaults.store)
@@ -260,17 +281,24 @@ struct VoiceInkTests {
             localeIdentifier: "en-GB"
         )
 
-        storage.save(appleConfiguration)
+        testDefaults.store.set(
+            TranscriptionBackendID.appleSpeech.rawValue,
+            forKey: AppDefaults.transcriptionBackend
+        )
+        testDefaults.store.set("en-GB", forKey: AppDefaults.appleSpeechLocale)
         #expect(storage.load() == appleConfiguration)
 
-        storage.save(TranscriptionConfiguration(backend: .parakeetV2))
+        testDefaults.store.set(
+            TranscriptionBackendID.parakeetV2.rawValue,
+            forKey: AppDefaults.transcriptionBackend
+        )
         #expect(storage.load() == TranscriptionConfiguration(backend: .parakeetV2))
         #expect(testDefaults.store.string(forKey: AppDefaults.appleSpeechLocale) == "en-GB")
     }
 
     @Test("A recording snapshot is unchanged by later Settings changes")
     @MainActor
-    func backendSnapshotIsImmutableAcrossSelectionChanges() {
+    func backendConfigurationIsImmutableAcrossSelectionChanges() {
         let testDefaults = TestSelectionDefaults()
         defer { testDefaults.cleanup() }
         let storage = UserDefaultsTranscriptionSelectionStorage(defaults: testDefaults.store)
@@ -279,15 +307,16 @@ struct VoiceInkTests {
             localeIdentifier: "en-GB"
         )
 
-        storage.save(selected)
-        let recordingSnapshot = TranscriptionBackendSnapshot(configuration: storage.load())
+        testDefaults.store.set(
+            TranscriptionBackendID.appleSpeech.rawValue,
+            forKey: AppDefaults.transcriptionBackend
+        )
+        testDefaults.store.set("en-GB", forKey: AppDefaults.appleSpeechLocale)
+        let recordingConfiguration = storage.load()
 
-        storage.save(TranscriptionConfiguration(
-            backend: .appleSpeech,
-            localeIdentifier: "fr-FR"
-        ))
+        testDefaults.store.set("fr-FR", forKey: AppDefaults.appleSpeechLocale)
 
-        #expect(recordingSnapshot.configuration == selected)
+        #expect(recordingConfiguration == selected)
         #expect(storage.load().localeIdentifier == "fr-FR")
     }
 
@@ -300,7 +329,7 @@ struct VoiceInkTests {
             appleSpeech: appleSpeech
         )
 
-        let parakeetBackend = try router.backend(for: TranscriptionBackendSnapshot(backend: .parakeetV2))
+        let parakeetBackend = router.backend(for: TranscriptionConfiguration(backend: .parakeetV2))
         #expect(try await parakeetBackend.transcribe(
             samples: [1],
             configuration: TranscriptionConfiguration(backend: .parakeetV2)
@@ -308,7 +337,7 @@ struct VoiceInkTests {
         #expect(await parakeet.transcriptionCount == 1)
         #expect(await appleSpeech.transcriptionCount == 0)
 
-        let appleBackend = try router.backend(for: TranscriptionBackendSnapshot(
+        let appleBackend = router.backend(for: TranscriptionConfiguration(
             backend: .appleSpeech,
             localeIdentifier: "en-US"
         ))
@@ -317,17 +346,6 @@ struct VoiceInkTests {
             configuration: TranscriptionConfiguration(backend: .appleSpeech, localeIdentifier: "en-US")
         ) == "apple")
         #expect(await appleSpeech.transcriptionCount == 1)
-
-        let noAppleRouter = TranscriptionBackendRouter(parakeetV2: parakeet)
-        do {
-            _ = try noAppleRouter.backend(for: TranscriptionBackendSnapshot(
-                backend: .appleSpeech,
-                localeIdentifier: "en-US"
-            ))
-            #expect(Bool(false), "Apple Speech must not silently fall back to Parakeet")
-        } catch let error as TranscriptionBackendError {
-            #expect(error == .unavailable(.appleSpeech))
-        }
     }
 
     @Test("FluidAudio backend preserves prepare, transcribe, and cleanup boundaries")

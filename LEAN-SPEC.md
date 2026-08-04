@@ -1,22 +1,29 @@
 # Lean-local product contract
 
-VoiceInk has one job: a global shortcut controls microphone capture, local
-Parakeet v2 transcription turns the recording into text, and the shaped result
+VoiceInk has one job: a global shortcut controls microphone capture, the
+selected on-device backend turns the recording into text, and the shaped result
 is pasted into the frontmost app.
-
-GitHub issue #3 owns migration order and implementation state. This file owns
-only the product behavior that work on that roadmap must preserve.
 
 ## Retained behavior
 
 - One configurable shortcut supports toggle and push-to-talk recording.
 - Recording uses the selected input device and publishes a live audio meter.
 - The recorder panel supports top-center and bottom-center placement.
-- Live transcription is opt-in and performs work only while recording.
-- Parakeet v2 acquisition is an explicit Settings action. Recording is blocked
-  until the local model exists and while it is downloading. FluidAudio network
-  access is disabled outside that action; dictation never initiates a download.
-- Final transcription runs locally through Parakeet v2.
+- Live transcription is on by default and can be disabled in Settings. It
+  performs work only while recording and none when disabled.
+- Settings exposes two local transcription backends: Parakeet v2 is the
+  default, and Apple Speech is optional. Backend and Apple locale changes apply
+  to the next recording, not one already in progress.
+- Parakeet v2 model acquisition and Apple Speech language acquisition are
+  explicit Settings actions. Recording is blocked until the selected assets
+  are ready and while they are downloading. Dictation never initiates a
+  download or falls back to the other backend.
+- Apple Speech uses macOS-managed `SpeechAnalyzer` and `SpeechTranscriber`
+  assets. Settings exposes supported languages, truthful readiness, explicit
+  acquisition, and explicit reservation release; release does not promise
+  immediate deletion of system-managed assets.
+- Final transcription runs locally through the backend captured at recording
+  start.
 - Filler-word filtering and user-defined text replacements shape final output.
 - Text is pasted into the frontmost app. Clipboard restoration remains an
   explicit setting rather than an assumed behavior.
@@ -39,7 +46,7 @@ only the product behavior that work on that roadmap must preserve.
 
 ## Excluded until a new product decision
 
-- Multiple transcription backends or model-selection UI.
+- Additional transcription backends beyond Parakeet v2 and Apple Speech.
 - AI enhancement, per-app modes, context capture, cloud providers, or accounts.
 - Multiple shortcuts, audio-file transcription, updater, licensing, paywall,
   analytics, dashboard, history database/browser, or upstream-sync machinery.

@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This is intentionally closed. Adding a backend is a product decision that
 /// must add an explicit route and its acquisition/runtime behavior.
-enum TranscriptionBackendID: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+enum TranscriptionBackendID: String, CaseIterable, Identifiable, Sendable {
     case parakeetV2 = "parakeet-v2"
     case appleSpeech = "apple-speech"
 
@@ -25,7 +25,7 @@ enum TranscriptionBackendID: String, CaseIterable, Codable, Hashable, Identifiab
 /// Apple Speech owns a locale; Parakeet V2 does not. A locale supplied for
 /// Parakeet is deliberately discarded so a snapshot cannot carry an
 /// inapplicable setting into that backend.
-struct TranscriptionConfiguration: Equatable, Hashable, Sendable, Codable {
+struct TranscriptionConfiguration: Equatable, Sendable {
     let backend: TranscriptionBackendID
     let localeIdentifier: String?
 
@@ -42,34 +42,10 @@ struct TranscriptionConfiguration: Equatable, Hashable, Sendable, Codable {
         self.localeIdentifier = localeIdentifier
     }
 
-    init(backend: TranscriptionBackendID, locale: Locale?) {
-        self.init(backend: backend, localeIdentifier: locale?.identifier)
-    }
-
     var locale: Locale? {
         guard let localeIdentifier else { return nil }
         return Locale(identifier: localeIdentifier)
     }
-}
-
-/// A value captured at recording start. Settings changes after this value is
-/// created apply to the next recording, never to an operation already running.
-struct TranscriptionBackendSnapshot: Equatable, Hashable, Sendable {
-    let configuration: TranscriptionConfiguration
-
-    init(configuration: TranscriptionConfiguration) {
-        self.configuration = configuration
-    }
-
-    init(backend: TranscriptionBackendID, localeIdentifier: String? = nil) {
-        self.init(configuration: TranscriptionConfiguration(
-            backend: backend,
-            localeIdentifier: localeIdentifier
-        ))
-    }
-
-    var backend: TranscriptionBackendID { configuration.backend }
-    var localeIdentifier: String? { configuration.localeIdentifier }
 }
 
 struct FluidAudioModel: Sendable {

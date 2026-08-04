@@ -11,14 +11,13 @@ struct AppleSpeechTests {
         #expect(AppleSpeechAssetStateMachine.observed(status: .supported, previous: nil) == .absent)
         #expect(AppleSpeechAssetStateMachine.observed(status: .installed, previous: .absent) == .ready)
         #expect(AppleSpeechAssetStateMachine.observed(status: .supported, previous: .ready) == .reclaimed)
-        #expect(AppleSpeechAssetStateMachine.observed(status: .downloading, previous: .absent) == .downloading(progress: nil))
+        #expect(AppleSpeechAssetStateMachine.observed(status: .downloading, previous: .absent) == .downloading)
     }
 
-    @Test("Asset request transitions are explicit and progress is optional")
+    @Test("Asset request transitions are explicit")
     func assetRequestTransitions() {
         #expect(AppleSpeechAssetStateMachine.requested() == .requested)
-        #expect(AppleSpeechAssetStateMachine.downloading(progress: nil) == .downloading(progress: nil))
-        #expect(AppleSpeechAssetStateMachine.downloading(progress: 0.5) == .downloading(progress: 0.5))
+        #expect(AppleSpeechAssetStateMachine.downloading() == .downloading)
     }
 
     @Test("Asset presentation maps every state to a truthful status and action")
@@ -31,9 +30,7 @@ struct AppleSpeechTests {
             AppleSpeechAssetPresentation(status: .downloadRequired, action: .download))
         #expect(AppleSpeechAssetPresentation.forState(.reclaimed) ==
             AppleSpeechAssetPresentation(status: .downloadRequired, action: .download))
-        #expect(AppleSpeechAssetPresentation.forState(.downloading(progress: nil)) ==
-            AppleSpeechAssetPresentation(status: .downloading, action: .none))
-        #expect(AppleSpeechAssetPresentation.forState(.downloading(progress: 0.5)) ==
+        #expect(AppleSpeechAssetPresentation.forState(.downloading) ==
             AppleSpeechAssetPresentation(status: .downloading, action: .none))
         #expect(AppleSpeechAssetPresentation.forState(.ready) ==
             AppleSpeechAssetPresentation(status: .ready, action: .none))
@@ -138,12 +135,10 @@ struct AppleSpeechTests {
         #expect(AppleSpeechAssetStateMachine.failed(error) == .reservationLimit)
     }
 
-    @Test("Prepare and transcribe never request absent assets")
-    func noImplicitAssetAcquisition() async throws {
+    @Test("Installed assets prepare and transcribe without acquisition")
+    func installedAssetsTranscribeWithoutAcquisition() async throws {
         let boundary = FakeAppleSpeechAssetBoundary(status: .installed)
-        let analyzer = FakeAppleSpeechAnalyzerBoundary(segments: [
-            AppleSpeechTranscriptSegment(startTime: 0, endTime: 1, text: "hello", isFinal: true)
-        ])
+        let analyzer = FakeAppleSpeechAnalyzerBoundary(result: "hello")
         let service = AppleSpeechTranscriptionService(
             assets: AppleSpeechAssetManager(boundary: boundary),
             analyzer: analyzer
@@ -156,6 +151,41 @@ struct AppleSpeechTests {
         #expect(await boundary.requestCount == 0)
         #expect(await boundary.releaseCount == 0)
         #expect(await analyzer.samples == [0.1, 0.2])
+    }
+
+    @Test("Prepare and transcribe never request absent assets")
+    func absentAssetsNeverAcquireImplicitly() async {
+        let boundary = FakeAppleSpeechAssetBoundary(status: .supported)
+        let analyzer = FakeAppleSpeechAnalyzerBoundary()
+        let service = AppleSpeechTranscriptionService(
+            assets: AppleSpeechAssetManager(boundary: boundary),
+            analyzer: analyzer
+        )
+        let configuration = TranscriptionConfiguration(
+            backend: .appleSpeech,
+            localeIdentifier: "en-US"
+        )
+
+        do {
+            try await service.prepare(configuration: configuration)
+            #expect(Bool(false), "absent assets must fail preparation")
+        } catch let error as AppleSpeechTranscriptionError {
+            #expect(error == .assetsUnavailable(.absent))
+        } catch {
+            #expect(Bool(false), "unexpected preparation error: \(error)")
+        }
+
+        do {
+            _ = try await service.transcribe(samples: [0.1], configuration: configuration)
+            #expect(Bool(false), "absent assets must fail transcription")
+        } catch let error as AppleSpeechTranscriptionError {
+            #expect(error == .assetsUnavailable(.absent))
+        } catch {
+            #expect(Bool(false), "unexpected transcription error: \(error)")
+        }
+
+        #expect(await boundary.requestCount == 0)
+        #expect(await analyzer.invocationCount == 0)
     }
 
     @Test("Empty input returns no text without starting analysis")
@@ -229,16 +259,14 @@ struct AppleSpeechTests {
         }
     }
 
-    @Test("Volatile results are replaced by final results and ordered by time")
+    @Test("Only finalized results are returned in emission order")
     func finalTailAggregation() {
         var accumulator = AppleSpeechTranscriptAccumulator()
-        accumulator.append(AppleSpeechTranscriptSegment(startTime: 2, endTime: 3, text: "world", isFinal: false))
-        accumulator.append(AppleSpeechTranscriptSegment(startTime: 0, endTime: 1, text: "hello", isFinal: true))
-        accumulator.append(AppleSpeechTranscriptSegment(startTime: 2, endTime: 3, text: "world!", isFinal: true))
-        accumulator.append(AppleSpeechTranscriptSegment(startTime: 0, endTime: 1, text: "stale", isFinal: false))
+        accumulator.append(text: "volatile", isFinal: false)
+        accumulator.append(text: "hello", isFinal: true)
+        accumulator.append(text: "world!", isFinal: true)
 
         #expect(accumulator.finalText == "hello world!")
-        #expect(accumulator.finalSegments.map(\.text) == ["hello", "world!"])
     }
 
     @Test("Cancellation stops the analyzer and suppresses its stale result")
@@ -315,10 +343,9 @@ private actor FakeAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
     func requestInstallation(for locale: Locale) async throws -> AppleSpeechAssetInstallation? {
         requestCount += 1
         if let installationError { throw installationError }
-        return AppleSpeechAssetInstallation(
-            progress: { nil },
-            downloadAndInstall: { await self.finishInstallation() }
-        )
+        return AppleSpeechAssetInstallation {
+            await self.finishInstallation()
+        }
     }
 
     private func finishInstallation() {
@@ -337,18 +364,18 @@ private actor FakeAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
 }
 
 private actor FakeAppleSpeechAnalyzerBoundary: AppleSpeechAnalyzerBoundary {
-    let segments: [AppleSpeechTranscriptSegment]
+    let result: String
     private(set) var samples: [Float] = []
     private(set) var invocationCount = 0
 
-    init(segments: [AppleSpeechTranscriptSegment] = []) {
-        self.segments = segments
+    init(result: String = "") {
+        self.result = result
     }
 
-    func transcribe(samples: [Float], locale: Locale) async throws -> [AppleSpeechTranscriptSegment] {
+    func transcribe(samples: [Float], locale: Locale) async throws -> String {
         invocationCount += 1
         self.samples = samples
-        return segments
+        return result
     }
 
     func cancel() async {}
@@ -358,10 +385,10 @@ private actor BlockingAppleSpeechAnalyzerBoundary: AppleSpeechAnalyzerBoundary {
     private(set) var invocationCount = 0
     private(set) var cancelCount = 0
 
-    func transcribe(samples: [Float], locale: Locale) async throws -> [AppleSpeechTranscriptSegment] {
+    func transcribe(samples: [Float], locale: Locale) async throws -> String {
         invocationCount += 1
         try await Task.sleep(for: .seconds(60))
-        return [AppleSpeechTranscriptSegment(startTime: 0, endTime: 1, text: "stale", isFinal: true)]
+        return "stale"
     }
 
     func cancel() async {

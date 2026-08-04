@@ -1,83 +1,36 @@
 import AVFoundation
-import CoreMedia
 import Foundation
 import Speech
 
-struct AppleSpeechTranscriptSegment: Equatable, Sendable {
-    let startTime: Double
-    let endTime: Double
-    let text: String
-    let isFinal: Bool
-
-    init(startTime: Double, endTime: Double, text: String, isFinal: Bool) {
-        self.startTime = startTime
-        self.endTime = endTime
-        self.text = text
-        self.isFinal = isFinal
-    }
-}
-
-/// Keeps only final text and lets a final result replace a prior result for the
-/// same time range. Volatile updates never leak into the returned transcript.
+/// Keeps finalized results in the order emitted by SpeechTranscriber.
 struct AppleSpeechTranscriptAccumulator: Sendable {
-    private struct Key: Hashable, Sendable {
-        let startTime: Double
-        let endTime: Double
-    }
+    private var finalized: [String] = []
 
-    private struct Entry: Sendable {
-        let segment: AppleSpeechTranscriptSegment
-        let sequence: Int
-    }
-
-    private var entries: [Key: Entry] = [:]
-    private var sequence = 0
-
-    mutating func append(_ segment: AppleSpeechTranscriptSegment) {
-        let key = Key(startTime: segment.startTime, endTime: segment.endTime)
-        if let existing = entries[key], existing.segment.isFinal, !segment.isFinal {
-            return
-        }
-
-        sequence += 1
-        entries[key] = Entry(segment: segment, sequence: sequence)
-    }
-
-    var finalSegments: [AppleSpeechTranscriptSegment] {
-        entries.values
-            .filter(\.segment.isFinal)
-            .sorted {
-                if $0.segment.startTime != $1.segment.startTime {
-                    return $0.segment.startTime < $1.segment.startTime
-                }
-                if $0.segment.endTime != $1.segment.endTime {
-                    return $0.segment.endTime < $1.segment.endTime
-                }
-                return $0.sequence < $1.sequence
-            }
-            .map(\.segment)
+    mutating func append(text: String, isFinal: Bool) {
+        guard isFinal else { return }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        finalized.append(text)
     }
 
     var finalText: String {
-        finalSegments
-            .map(\.text)
+        finalized
             .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
 protocol AppleSpeechAnalyzerBoundary: Sendable {
-    func transcribe(samples: [Float], locale: Locale) async throws -> [AppleSpeechTranscriptSegment]
+    func transcribe(samples: [Float], locale: Locale) async throws -> String
     func cancel() async
 }
 
 actor SystemAppleSpeechAnalyzerBoundary: AppleSpeechAnalyzerBoundary {
     private let sampleRate: Double = 16_000
     private var analyzer: SpeechAnalyzer?
-    private var resultsTask: Task<[AppleSpeechTranscriptSegment], Error>?
+    private var resultsTask: Task<String, Error>?
     private var operationID: UUID?
 
-    func transcribe(samples: [Float], locale: Locale) async throws -> [AppleSpeechTranscriptSegment] {
+    func transcribe(samples: [Float], locale: Locale) async throws -> String {
         await cancel()
         try Task.checkCancellation()
 
@@ -110,19 +63,14 @@ actor SystemAppleSpeechAnalyzerBoundary: AppleSpeechAnalyzerBoundary {
 
         let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         let resultsTask = Task { [transcriber] in
-            var segments: [AppleSpeechTranscriptSegment] = []
+            var transcript = AppleSpeechTranscriptAccumulator()
             for try await result in transcriber.results {
-                let range = result.range
-                let start = range.start.seconds
-                let end = range.end.seconds
-                segments.append(AppleSpeechTranscriptSegment(
-                    startTime: start.isFinite ? start : 0,
-                    endTime: end.isFinite ? end : start,
+                transcript.append(
                     text: String(result.text.characters),
                     isFinal: result.isFinal
-                ))
+                )
             }
-            return segments
+            return transcript.finalText
         }
         self.resultsTask = resultsTask
 

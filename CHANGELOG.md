@@ -5,6 +5,13 @@ VoiceInk fork. It is derived from VoiceInk and remains licensed under GPL-3.0.
 
 ## Unreleased
 
+- Add Apple Speech as an optional on-device transcription backend while keeping
+  Parakeet v2 as the default.
+- Add Apple Speech language selection, readiness, explicit asset acquisition,
+  and reservation-release controls to Settings. Recording never downloads or
+  silently falls back to another backend.
+- Show the live transcript in the recorder by default, with a Settings toggle
+  that disables both the preview and its transcription work.
 - Remove unreachable upstream assets, unused formatting and error types, and
   dormant convenience APIs from the recorder, shortcut, paste, notification,
   and Core Audio paths.

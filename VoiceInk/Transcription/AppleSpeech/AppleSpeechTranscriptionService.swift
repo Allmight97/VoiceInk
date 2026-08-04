@@ -73,18 +73,14 @@ actor AppleSpeechTranscriptionService: TranscriptionBackend {
         await analyzer.cancel()
 
         do {
-            let segments = try await analyzer.transcribe(samples: samples, locale: locale)
+            let transcript = try await analyzer.transcribe(samples: samples, locale: locale)
             try Task.checkCancellation()
             guard activeOperationID == operationID else {
                 throw AppleSpeechTranscriptionError.cancelled
             }
 
-            var accumulator = AppleSpeechTranscriptAccumulator()
-            for segment in segments {
-                accumulator.append(segment)
-            }
             activeOperationID = nil
-            return accumulator.finalText
+            return transcript
         } catch is CancellationError {
             if activeOperationID == operationID { activeOperationID = nil }
             await analyzer.cancel()
