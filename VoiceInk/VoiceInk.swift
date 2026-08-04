@@ -19,15 +19,15 @@ struct VoiceInkApp: App {
         let recorder = Recorder()
         let fluidAudioModelManager = FluidAudioModelManager()
         let fluidAudioService = FluidAudioTranscriptionService()
+        let backendRouter = TranscriptionBackendRouter(parakeetV2: fluidAudioService)
+        let selectionStorage = UserDefaultsTranscriptionSelectionStorage()
         let delivery = TranscriptionDelivery()
-        let pipeline = TranscriptionPipeline(
-            fluidAudioService: fluidAudioService,
-            delivery: delivery
-        )
+        let pipeline = TranscriptionPipeline(delivery: delivery)
         let engine = VoiceInkEngine(
             recorder: recorder,
             fluidAudioModelManager: fluidAudioModelManager,
-            fluidAudioService: fluidAudioService,
+            backendRouter: backendRouter,
+            selectionStorage: selectionStorage,
             pipeline: pipeline
         )
         let recorderUIManager = RecorderUIManager()

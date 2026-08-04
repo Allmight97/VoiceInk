@@ -20,13 +20,16 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     weak var recorderUIManager: RecorderPanelPresenting?
 
     private let fluidAudioModelManager: FluidAudioModelManager
-    private let fluidAudioService: FluidAudioTranscriptionService
+    private let backendRouter: TranscriptionBackendRouter
+    private let selectionStorage: any TranscriptionSelectionStorage
     private let pipeline: TranscriptionPipeline
     private let recordingsDirectory: URL
     private var recordedFile: URL?
     private var activeRecordingID: UUID?
     private var activeOperationID: UUID?
     private var sampleBuffer: RecordingSampleBuffer?
+    private var activeBackend: (any TranscriptionBackend)?
+    private var activeBackendSnapshot: TranscriptionBackendSnapshot?
     private var partialTranscriptTask: Task<Void, Never>?
     private var idleUnloadWorkItem: DispatchWorkItem?
     private var recordInterval: OSSignpostIntervalState?
@@ -39,12 +42,14 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     init(
         recorder: Recorder,
         fluidAudioModelManager: FluidAudioModelManager,
-        fluidAudioService: FluidAudioTranscriptionService,
+        backendRouter: TranscriptionBackendRouter,
+        selectionStorage: any TranscriptionSelectionStorage,
         pipeline: TranscriptionPipeline
     ) {
         self.recorder = recorder
         self.fluidAudioModelManager = fluidAudioModelManager
-        self.fluidAudioService = fluidAudioService
+        self.backendRouter = backendRouter
+        self.selectionStorage = selectionStorage
         self.pipeline = pipeline
 
         let appSupportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -86,6 +91,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         endRecordIntervalIfNeeded()
         sampleBuffer?.discard()
         sampleBuffer = nil
+        activeBackend = nil
+        activeBackendSnapshot = nil
         removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         partialTranscript = ""
@@ -103,6 +110,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         endRecordIntervalIfNeeded()
         sampleBuffer?.discard()
         sampleBuffer = nil
+        activeBackend = nil
+        activeBackendSnapshot = nil
         removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         recordingState = .idle
@@ -116,6 +125,20 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     }
 
     private func startRecording() async {
+        let backendSnapshot = TranscriptionBackendSnapshot(configuration: selectionStorage.load())
+        let backend: any TranscriptionBackend
+
+        do {
+            backend = try backendRouter.backend(for: backendSnapshot)
+        } catch {
+            NotificationManager.shared.showNotification(
+                title: error.localizedDescription,
+                type: .warning
+            )
+            await recorderUIManager?.dismissRecorderPanel()
+            return
+        }
+
         switch Self.modelRecordingGate(
             isDownloading: fluidAudioModelManager.isFluidAudioModelDownloading(model),
             isDownloaded: fluidAudioModelManager.isFluidAudioModelDownloaded(model)
@@ -151,6 +174,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         let recordingID = UUID()
         activeRecordingID = recordingID
         activeOperationID = recordingID
+        activeBackend = backend
+        activeBackendSnapshot = backendSnapshot
 
         let fileURL = recordingsDirectory.appendingPathComponent("\(recordingID.uuidString).wav")
         recordedFile = fileURL
@@ -175,9 +200,17 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             recordInterval = LeanSignpost.signposter.beginInterval("record")
 
             Task(priority: .userInitiated) { @MainActor [weak self] in
-                await self?.warmCurrentModelIfPossible()
+                await self?.warmCurrentBackendIfPossible(
+                    backend,
+                    configuration: backendSnapshot.configuration
+                )
             }
-            startPartialTranscriptionIfEnabled(buffer: buffer, recordingID: recordingID)
+            startPartialTranscriptionIfEnabled(
+                buffer: buffer,
+                recordingID: recordingID,
+                backend: backend,
+                configuration: backendSnapshot.configuration
+            )
         } catch {
             guard isOperationCurrent(recordingID) else { return }
             logger.error("Recording failed to start: \(error, privacy: .public)")
@@ -185,6 +218,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             recordedFile = nil
             activeRecordingID = nil
             activeOperationID = nil
+            activeBackend = nil
+            activeBackendSnapshot = nil
             NotificationManager.shared.showNotification(
                 title: String(localized: "Recording failed to start"),
                 type: .error
@@ -196,11 +231,15 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     private func stopAndTranscribe() async {
         let recordingID = activeRecordingID
         let operationID = activeOperationID
+        let backend = activeBackend
+        let backendSnapshot = activeBackendSnapshot
         activeRecordingID = nil
         partialTranscript = ""
         recordingState = .transcribing
         await recorder.stopRecording()
         await finishPartialTranscription()
+        activeBackend = nil
+        activeBackendSnapshot = nil
         if let recordInterval {
             LeanSignpost.signposter.endInterval("record", recordInterval)
             self.recordInterval = nil
@@ -212,7 +251,11 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         recordedFile = nil
         defer { removeRecordingUnlessKept(audioURL) }
 
-        guard recordingID != nil, let operationID, isOperationCurrent(operationID) else {
+        guard recordingID != nil,
+              let operationID,
+              let backend,
+              let backendSnapshot,
+              isOperationCurrent(operationID) else {
             buffer?.discard()
             if let operationID, isOperationCurrent(operationID) {
                 recordingState = .idle
@@ -237,6 +280,12 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
             try await pipeline.run(
                 samples: samples,
+                transcribe: { samples in
+                    try await backend.transcribe(
+                        samples: samples,
+                        configuration: backendSnapshot.configuration
+                    )
+                },
                 isOperationCurrent: { [weak self] in
                     self?.isOperationCurrent(operationID) ?? false
                 },
@@ -246,8 +295,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                 }
             )
             guard isOperationCurrent(operationID) else { return }
-            isCurrentModelLoaded = await fluidAudioService.isModelLoaded
-            scheduleIdleUnloadIfEnabled()
+            isCurrentModelLoaded = await backend.isPrepared(for: backendSnapshot.configuration)
+            scheduleIdleUnloadIfEnabled(backend: backend)
         } catch {
             guard isOperationCurrent(operationID) else { return }
             logger.error("Transcription failed: \(error, privacy: .public)")
@@ -283,7 +332,12 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     /// Opt-in live transcript: while recording, periodically transcribe a
     /// snapshot of the in-memory buffer and publish it as partialTranscript.
     /// Inert unless ShowLiveTranscript is on; costs CPU only while recording.
-    private func startPartialTranscriptionIfEnabled(buffer: RecordingSampleBuffer, recordingID: UUID) {
+    private func startPartialTranscriptionIfEnabled(
+        buffer: RecordingSampleBuffer,
+        recordingID: UUID,
+        backend: any TranscriptionBackend,
+        configuration: TranscriptionConfiguration
+    ) {
         guard UserDefaults.standard.bool(forKey: "ShowLiveTranscript") else { return }
 
         partialTranscriptTask = Task(priority: .utility) { @MainActor [weak self] in
@@ -300,7 +354,10 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
                 let samples = buffer.snapshotFloatSamples()
                 guard samples.count >= minimumSamples else { continue }
 
-                guard let text = try? await self.fluidAudioService.transcribe(samples: samples) else { continue }
+                guard let text = try? await backend.transcribe(
+                    samples: samples,
+                    configuration: configuration
+                ) else { continue }
 
                 if !Task.isCancelled,
                    self.recordingState == .recording,
@@ -321,7 +378,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
     /// Opt-in: release model memory after N idle minutes (0 = keep resident).
     /// Nothing is scheduled at the default, preserving the zero-idle-timers invariant.
-    private func scheduleIdleUnloadIfEnabled() {
+    private func scheduleIdleUnloadIfEnabled(backend: any TranscriptionBackend) {
         idleUnloadWorkItem?.cancel()
         idleUnloadWorkItem = nil
 
@@ -331,7 +388,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         let workItem = DispatchWorkItem { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.recordingState == .idle else { return }
-                await self.fluidAudioService.cleanup()
+                await backend.cleanup()
                 self.isCurrentModelLoaded = false
                 self.logger.notice("Unloaded model after \(minutes, privacy: .public) idle minutes")
             }
@@ -350,12 +407,13 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         }
     }
 
-    private func warmCurrentModelIfPossible() async {
-        guard fluidAudioModelManager.isFluidAudioModelDownloaded(model) else { return }
-
+    private func warmCurrentBackendIfPossible(
+        _ backend: any TranscriptionBackend,
+        configuration: TranscriptionConfiguration
+    ) async {
         do {
-            try await fluidAudioService.loadModel()
-            isCurrentModelLoaded = await fluidAudioService.isModelLoaded
+            try await backend.prepare(configuration: configuration)
+            isCurrentModelLoaded = await backend.isPrepared(for: configuration)
         } catch {
             logger.error("Model load failed: \(error, privacy: .public)")
         }

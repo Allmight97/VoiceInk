@@ -138,3 +138,20 @@ actor FluidAudioTranscriptionService {
         activeVersion = version
     }
 }
+
+extension FluidAudioTranscriptionService: TranscriptionBackend {
+    func isPrepared(for configuration: TranscriptionConfiguration) -> Bool {
+        isModelLoaded
+    }
+
+    func prepare(configuration: TranscriptionConfiguration) async throws {
+        try await loadModel()
+    }
+
+    func transcribe(
+        samples: [Float],
+        configuration: TranscriptionConfiguration
+    ) async throws -> String {
+        try await transcribe(samples: samples)
+    }
+}

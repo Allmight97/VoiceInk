@@ -168,16 +168,16 @@ struct VoiceInkTests {
             paste: { pastedTexts.append($0) }
         )
         let pipeline = TranscriptionPipeline(
-            transcribe: { _ in
-                activeOperation = replacementOperation
-                return "stale text"
-            },
             delivery: delivery,
             appendLog: { loggedTexts.append($0) }
         )
 
         try await pipeline.run(
             samples: [0],
+            transcribe: { _ in
+                activeOperation = replacementOperation
+                return "stale text"
+            },
             isOperationCurrent: { activeOperation == staleOperation },
             onDismiss: { dismissCount += 1 }
         )
@@ -232,6 +232,138 @@ struct VoiceInkTests {
         }
 
         #expect(await loader.invocationCount == 0)
+    }
+
+    @Test("Selection storage migrates missing and invalid backends to Parakeet")
+    @MainActor
+    func selectionStorageMigratesInvalidBackend() {
+        let testDefaults = TestSelectionDefaults()
+        defer { testDefaults.cleanup() }
+        let storage = UserDefaultsTranscriptionSelectionStorage(defaults: testDefaults.store)
+
+        #expect(storage.load() == TranscriptionConfiguration(backend: .parakeetV2))
+        #expect(testDefaults.store.string(forKey: AppDefaults.transcriptionBackend) == TranscriptionBackendID.parakeetV2.rawValue)
+
+        testDefaults.store.set("not-a-backend", forKey: AppDefaults.transcriptionBackend)
+        #expect(storage.load() == TranscriptionConfiguration(backend: .parakeetV2))
+        #expect(testDefaults.store.string(forKey: AppDefaults.transcriptionBackend) == TranscriptionBackendID.parakeetV2.rawValue)
+    }
+
+    @Test("Selection storage persists Apple locale without changing the backend default")
+    @MainActor
+    func selectionStoragePersistsLocaleInIsolatedDefaults() {
+        let testDefaults = TestSelectionDefaults()
+        defer { testDefaults.cleanup() }
+        let storage = UserDefaultsTranscriptionSelectionStorage(defaults: testDefaults.store)
+        let appleConfiguration = TranscriptionConfiguration(
+            backend: .appleSpeech,
+            localeIdentifier: "en-GB"
+        )
+
+        storage.save(appleConfiguration)
+        #expect(storage.load() == appleConfiguration)
+
+        storage.save(TranscriptionConfiguration(backend: .parakeetV2))
+        #expect(storage.load() == TranscriptionConfiguration(backend: .parakeetV2))
+        #expect(testDefaults.store.string(forKey: AppDefaults.appleSpeechLocale) == "en-GB")
+    }
+
+    @Test("A recording snapshot is unchanged by later Settings changes")
+    @MainActor
+    func backendSnapshotIsImmutableAcrossSelectionChanges() {
+        let testDefaults = TestSelectionDefaults()
+        defer { testDefaults.cleanup() }
+        let storage = UserDefaultsTranscriptionSelectionStorage(defaults: testDefaults.store)
+        let selected = TranscriptionConfiguration(
+            backend: .appleSpeech,
+            localeIdentifier: "en-GB"
+        )
+
+        storage.save(selected)
+        let recordingSnapshot = TranscriptionBackendSnapshot(configuration: storage.load())
+
+        storage.save(TranscriptionConfiguration(
+            backend: .appleSpeech,
+            localeIdentifier: "fr-FR"
+        ))
+
+        #expect(recordingSnapshot.configuration == selected)
+        #expect(storage.load().localeIdentifier == "fr-FR")
+    }
+
+    @Test("Backend router is closed and never falls back from Apple Speech")
+    func backendRouterRoutesOnlyTheSelectedBackend() async throws {
+        let parakeet = TestTranscriptionBackend(result: "parakeet")
+        let appleSpeech = TestTranscriptionBackend(result: "apple")
+        let router = TranscriptionBackendRouter(
+            parakeetV2: parakeet,
+            appleSpeech: appleSpeech
+        )
+
+        let parakeetBackend = try router.backend(for: TranscriptionBackendSnapshot(backend: .parakeetV2))
+        #expect(try await parakeetBackend.transcribe(
+            samples: [1],
+            configuration: TranscriptionConfiguration(backend: .parakeetV2)
+        ) == "parakeet")
+        #expect(await parakeet.transcriptionCount == 1)
+        #expect(await appleSpeech.transcriptionCount == 0)
+
+        let appleBackend = try router.backend(for: TranscriptionBackendSnapshot(
+            backend: .appleSpeech,
+            localeIdentifier: "en-US"
+        ))
+        #expect(try await appleBackend.transcribe(
+            samples: [2],
+            configuration: TranscriptionConfiguration(backend: .appleSpeech, localeIdentifier: "en-US")
+        ) == "apple")
+        #expect(await appleSpeech.transcriptionCount == 1)
+
+        let noAppleRouter = TranscriptionBackendRouter(parakeetV2: parakeet)
+        do {
+            _ = try noAppleRouter.backend(for: TranscriptionBackendSnapshot(
+                backend: .appleSpeech,
+                localeIdentifier: "en-US"
+            ))
+            #expect(Bool(false), "Apple Speech must not silently fall back to Parakeet")
+        } catch let error as TranscriptionBackendError {
+            #expect(error == .unavailable(.appleSpeech))
+        }
+    }
+
+    @Test("FluidAudio backend preserves prepare, transcribe, and cleanup boundaries")
+    func fluidAudioBackendPreservesLifecycleBoundaries() async {
+        let service = FluidAudioTranscriptionService(
+            modelStore: FluidAudioModelStore(
+                modelsExist: { _ in false },
+                loadFromCache: { _ in
+                    throw TestRecordingCaptureError.startFailed
+                }
+            )
+        )
+
+        let configuration = TranscriptionConfiguration(backend: .parakeetV2)
+        #expect(!(await service.isPrepared(for: configuration)))
+
+        do {
+            try await service.prepare(configuration: configuration)
+            #expect(Bool(false), "prepare should fail when Parakeet is not downloaded")
+        } catch let error as FluidAudioTranscriptionServiceError {
+            #expect(error == .modelNotDownloaded)
+        } catch {
+            #expect(Bool(false), "unexpected prepare error: \(error)")
+        }
+
+        do {
+            _ = try await service.transcribe(samples: [0, 1])
+            #expect(Bool(false), "transcribe should fail before loading a missing model")
+        } catch let error as FluidAudioTranscriptionServiceError {
+            #expect(error == .modelNotDownloaded)
+        } catch {
+            #expect(Bool(false), "unexpected transcription error: \(error)")
+        }
+
+        await service.cleanup()
+        #expect(!(await service.isPrepared(for: configuration)))
     }
 
     @Test("Explicit model acquisition restores offline mode")
@@ -451,6 +583,25 @@ private struct TestDefaults {
     }
 }
 
+private struct TestSelectionDefaults {
+    let suiteName: String
+    let store: UserDefaults
+
+    init() {
+        let suiteName = "com.prakashjoshipax.VoiceInkTests.selection.\(UUID().uuidString)"
+        guard let store = UserDefaults(suiteName: suiteName) else {
+            fatalError("Unable to create isolated selection test defaults")
+        }
+        self.suiteName = suiteName
+        self.store = store
+        store.removePersistentDomain(forName: suiteName)
+    }
+
+    func cleanup() {
+        store.removePersistentDomain(forName: suiteName)
+    }
+}
+
 private func testOutputURL() -> URL {
     URL(fileURLWithPath: "/dev/null")
 }
@@ -467,6 +618,34 @@ private enum TestRecordingCaptureError: Error {
 
 private enum TestModelDownloadError: Error {
     case failed
+}
+
+private actor TestTranscriptionBackend: TranscriptionBackend {
+    let result: String
+    private(set) var transcriptionCount = 0
+    private var prepared = false
+
+    init(result: String) {
+        self.result = result
+    }
+
+    func isPrepared(for configuration: TranscriptionConfiguration) -> Bool { prepared }
+
+    func prepare(configuration: TranscriptionConfiguration) async throws {
+        prepared = true
+    }
+
+    func transcribe(
+        samples: [Float],
+        configuration: TranscriptionConfiguration
+    ) async throws -> String {
+        transcriptionCount += 1
+        return result
+    }
+
+    func cleanup() async {
+        prepared = false
+    }
 }
 
 private actor TestModelLoader {

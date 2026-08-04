@@ -26,6 +26,8 @@ enum RecorderPanelPosition: String, CaseIterable, Identifiable {
 }
 
 enum AppDefaults {
+    static let transcriptionBackend = "TranscriptionBackend"
+    static let appleSpeechLocale = "AppleSpeechLocale"
     static let soundFeedbackEnabled = "IsSoundFeedbackEnabled"
     static let wordReplacementEnabled = "IsWordReplacementEnabled"
     static let wordReplacements = "WordReplacements"
@@ -35,6 +37,7 @@ enum AppDefaults {
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
+            transcriptionBackend: TranscriptionBackendID.parakeetV2.rawValue,
             "restoreClipboardAfterPaste": false,
             "clipboardRestoreDelay": 2.0,
             RecorderDisplaySettingsKeys.showLiveTranscript: false,
