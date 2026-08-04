@@ -30,14 +30,17 @@ is pasted into the frontmost app.
 - Optional append-only JSONL history supports Copy Last Transcription without a
   database or history browser.
 - Sound feedback, launch at login, model residency, and retained debug
-  recordings remain explicit settings.
+  recordings remain explicit settings. Idle model eviction releases only the
+  selected backend's resident resources; the app and global shortcut remain
+  available.
 - Microphone and accessibility failures produce user-visible recovery paths.
 
 ## Operating invariants
 
 - No cloud transcription, account, or network dependency belongs in the
   dictation path.
-- Idle work has no timer, network request, or recurring persistence task.
+- With idle model eviction disabled, idle work has no timer, network request,
+  or recurring persistence task.
 - Optional behavior performs no work while disabled.
 - Audio samples remain in memory for transcription unless retained debug
   recording is enabled.

@@ -94,7 +94,6 @@ private struct GeneralSettingsView: View {
                 Stepper(value: $unloadMinutes, in: 0...240) {
                     Text("Unload Model After Idle: \(unloadMinutes == 0 ? "Never" : "\(unloadMinutes) min")")
                 }
-                // LEAN-TODO: model idle unload is a later wave; this pass only preserves the setting.
                 Toggle("Keep Debug Recordings", isOn: $debugKeepRecordings)
             }
         }

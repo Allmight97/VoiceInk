@@ -3,6 +3,32 @@ import Foundation
 import os
 
 @MainActor
+final class IdleBackendUnloader {
+    private var task: Task<Void, Never>?
+
+    func schedule(
+        after delay: Duration,
+        cleanup: @escaping @MainActor @Sendable () async -> Void
+    ) {
+        cancel()
+        task = Task { @MainActor in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await cleanup()
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+}
+
+@MainActor
 final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     enum ModelRecordingGate: Equatable {
         case ready
@@ -31,7 +57,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     private var activeBackend: (any TranscriptionBackend)?
     private var activeBackendConfiguration: TranscriptionConfiguration?
     private var partialTranscriptTask: Task<Void, Never>?
-    private var idleUnloadWorkItem: DispatchWorkItem?
+    private let idleBackendUnloader = IdleBackendUnloader()
     private var recordInterval: OSSignpostIntervalState?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "VoiceInkEngine")
 
@@ -147,8 +173,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
         shouldCancelRecording = false
         partialTranscript = ""
-        idleUnloadWorkItem?.cancel()
-        idleUnloadWorkItem = nil
+        idleBackendUnloader.cancel()
         let recordingID = UUID()
         activeRecordingID = recordingID
         activeOperationID = recordingID
@@ -426,24 +451,16 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     /// Opt-in: release model memory after N idle minutes (0 = keep resident).
     /// Nothing is scheduled at the default, preserving the zero-idle-timers invariant.
     private func scheduleIdleUnloadIfEnabled(backend: any TranscriptionBackend) {
-        idleUnloadWorkItem?.cancel()
-        idleUnloadWorkItem = nil
+        idleBackendUnloader.cancel()
 
-        let minutes = UserDefaults.standard.integer(forKey: "UnloadModelAfterIdleMinutes")
+        let minutes = UserDefaults.standard.integer(forKey: AppDefaults.unloadModelAfterIdleMinutes)
         guard minutes > 0 else { return }
 
-        let workItem = DispatchWorkItem { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, self.recordingState == .idle else { return }
-                await backend.cleanup()
-                self.logger.notice("Unloaded model after \(minutes, privacy: .public) idle minutes")
-            }
+        idleBackendUnloader.schedule(after: .seconds(minutes * 60)) { [weak self] in
+            guard let self, self.recordingState == .idle else { return }
+            await backend.cleanup()
+            self.logger.notice("Unloaded model after \(minutes, privacy: .public) idle minutes")
         }
-        idleUnloadWorkItem = workItem
-        DispatchQueue.global(qos: .utility).asyncAfter(
-            deadline: .now() + .seconds(minutes * 60),
-            execute: workItem
-        )
     }
 
     private func removeRecordingUnlessKept(_ url: URL?) {

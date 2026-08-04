@@ -335,19 +335,26 @@ final class AudioDeviceManager: ObservableObject {
         let status = AudioObjectAddPropertyListener(
             systemObjectID,
             &address,
-            { (_, _, _, userData) -> OSStatus in
-                let manager = Unmanaged<AudioDeviceManager>.fromOpaque(userData!).takeUnretainedValue()
-                DispatchQueue.main.async {
-                    manager.handleDeviceListChange()
-                }
-                return noErr
-            },
+            Self.deviceChangeListener,
             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
         
         if status != noErr {
             logger.error("Failed to add device change listener: \(status, privacy: .public)")
         }
+    }
+
+    /// Core Audio invokes property listeners on its own queue. Keeping this C
+    /// callback nonisolated avoids entering a MainActor closure on that queue;
+    /// only the actual state update hops to MainActor.
+    private nonisolated static let deviceChangeListener: AudioObjectPropertyListenerProc = {
+        _, _, _, userData in
+        guard let userData else { return kAudio_ParamError }
+        let manager = Unmanaged<AudioDeviceManager>.fromOpaque(userData).takeUnretainedValue()
+        Task { @MainActor in
+            manager.handleDeviceListChange()
+        }
+        return noErr
     }
     
     private func handleDeviceListChange() {

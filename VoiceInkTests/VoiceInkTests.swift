@@ -53,6 +53,26 @@ struct VoiceInkTests {
         ) == nil)
     }
 
+    @Test("Idle model eviction runs on MainActor and cancellation suppresses cleanup")
+    @MainActor
+    func idleModelEvictionLifecycle() async throws {
+        let cleanup = TestCleanupCounter()
+        let unloader = IdleBackendUnloader()
+
+        unloader.schedule(after: .milliseconds(10)) {
+            await cleanup.increment()
+        }
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(await cleanup.count == 1)
+
+        unloader.schedule(after: .milliseconds(10)) {
+            await cleanup.increment()
+        }
+        unloader.cancel()
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(await cleanup.count == 1)
+    }
+
     @Test("Menu status and recorder panel presentation derive from engine state")
     @MainActor
     func presentationDerivationsStayStateOwned() {
@@ -672,6 +692,14 @@ private actor TestModelLoader {
     func load(_ version: AsrModelVersion) async throws -> AsrModels {
         invocationCount += 1
         throw TestRecordingCaptureError.startFailed
+    }
+}
+
+private actor TestCleanupCounter {
+    private(set) var count = 0
+
+    func increment() {
+        count += 1
     }
 }
 
