@@ -76,8 +76,58 @@ struct AppleSpeechAssetInstallation: Sendable {
 }
 
 protocol AppleSpeechAssetBoundary: Sendable {
+    func supportedLocales() async -> [Locale]
+    func supportedLocale(equivalentTo locale: Locale) async -> Locale?
     func status(for locale: Locale) async -> AppleSpeechAssetInventoryStatus
     func requestInstallation(for locale: Locale) async throws -> AppleSpeechAssetInstallation?
     func reservedLocales() async -> [Locale]
     func release(locale: Locale) async -> Bool
+}
+
+extension AppleSpeechAssetBoundary {
+    /// Test and embedded boundaries can opt out of locale discovery while
+    /// retaining the asset status/acquisition seam.
+    func supportedLocales() async -> [Locale] { [] }
+
+    func supportedLocale(equivalentTo locale: Locale) async -> Locale? { nil }
+}
+
+enum AppleSpeechAssetPresentationStatus: Equatable, Sendable {
+    case checking
+    case downloadRequired
+    case downloading
+    case ready
+    case unsupported
+    case reservationLimit
+    case failed
+}
+
+enum AppleSpeechAssetPresentationAction: Equatable, Sendable {
+    case none
+    case download
+    case releaseReservation
+}
+
+struct AppleSpeechAssetPresentation: Equatable, Sendable {
+    let status: AppleSpeechAssetPresentationStatus
+    let action: AppleSpeechAssetPresentationAction
+
+    static func forState(_ state: AppleSpeechAssetState?) -> Self {
+        switch state {
+        case nil, .requested:
+            return Self(status: .checking, action: .none)
+        case .unsupported:
+            return Self(status: .unsupported, action: .none)
+        case .absent, .reclaimed:
+            return Self(status: .downloadRequired, action: .download)
+        case .downloading:
+            return Self(status: .downloading, action: .none)
+        case .ready:
+            return Self(status: .ready, action: .none)
+        case .reservationLimit:
+            return Self(status: .reservationLimit, action: .releaseReservation)
+        case .failed:
+            return Self(status: .failed, action: .download)
+        }
+    }
 }

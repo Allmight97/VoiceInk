@@ -32,6 +32,21 @@ actor AppleSpeechAssetManager {
         await boundary.reservedLocales()
     }
 
+    /// Returns the locales currently supported by SpeechTranscriber.
+    ///
+    /// This is intentionally a read-only query. Settings calls it when the
+    /// surface opens; no locale is reserved or installed by discovery.
+    func supportedLocales() async -> [Locale] {
+        await boundary.supportedLocales()
+    }
+
+    /// Finds the SpeechTranscriber locale that best matches a requested locale.
+    /// The Speech framework owns the equivalence rules (language, script, and
+    /// region), so callers do not need to duplicate them in the UI.
+    func supportedLocale(equivalentTo locale: Locale) async -> Locale? {
+        await boundary.supportedLocale(equivalentTo: locale)
+    }
+
     /// Explicit user action that releases the app's reservation. This does not
     /// claim immediate deletion: the OS may remove assets at a later time.
     @discardableResult
@@ -71,6 +86,14 @@ actor AppleSpeechAssetManager {
 }
 
 struct SystemAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
+    func supportedLocales() async -> [Locale] {
+        await SpeechTranscriber.supportedLocales
+    }
+
+    func supportedLocale(equivalentTo locale: Locale) async -> Locale? {
+        await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+    }
+
     func status(for locale: Locale) async -> AppleSpeechAssetInventoryStatus {
         let module = SpeechTranscriber(locale: locale, preset: .transcription)
         let status = await AssetInventory.status(forModules: [module])

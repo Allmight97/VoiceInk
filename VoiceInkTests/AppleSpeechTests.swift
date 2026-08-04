@@ -21,6 +21,83 @@ struct AppleSpeechTests {
         #expect(AppleSpeechAssetStateMachine.downloading(progress: 0.5) == .downloading(progress: 0.5))
     }
 
+    @Test("Asset presentation maps every state to a truthful status and action")
+    func assetPresentationMapping() {
+        #expect(AppleSpeechAssetPresentation.forState(nil) ==
+            AppleSpeechAssetPresentation(status: .checking, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.requested) ==
+            AppleSpeechAssetPresentation(status: .checking, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.absent) ==
+            AppleSpeechAssetPresentation(status: .downloadRequired, action: .download))
+        #expect(AppleSpeechAssetPresentation.forState(.reclaimed) ==
+            AppleSpeechAssetPresentation(status: .downloadRequired, action: .download))
+        #expect(AppleSpeechAssetPresentation.forState(.downloading(progress: nil)) ==
+            AppleSpeechAssetPresentation(status: .downloading, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.downloading(progress: 0.5)) ==
+            AppleSpeechAssetPresentation(status: .downloading, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.ready) ==
+            AppleSpeechAssetPresentation(status: .ready, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.unsupported) ==
+            AppleSpeechAssetPresentation(status: .unsupported, action: .none))
+        #expect(AppleSpeechAssetPresentation.forState(.reservationLimit) ==
+            AppleSpeechAssetPresentation(status: .reservationLimit, action: .releaseReservation))
+        #expect(AppleSpeechAssetPresentation.forState(.failed(message: "network")) ==
+            AppleSpeechAssetPresentation(status: .failed, action: .download))
+    }
+
+    @Test("Locale presentation sorts by localized name and falls back to identifier")
+    func localePresentationOrderingAndFallback() {
+        let displayLocale = Locale(identifier: "en-US")
+        let locales = [
+            Locale(identifier: "zz-ZZ"),
+            Locale(identifier: "fr-FR"),
+            Locale(identifier: "en-US"),
+            Locale(identifier: "zz-AA")
+        ]
+
+        let sorted = AppleSpeechLocalePresentation.sorted(locales, displayLocale: displayLocale)
+        #expect(sorted.map(\.identifier) == ["en-US", "fr-FR", "zz-AA", "zz-ZZ"])
+        #expect(AppleSpeechLocalePresentation.displayName(
+            for: Locale(identifier: "zz-ZZ"),
+            in: displayLocale
+        ) == "zz-ZZ")
+        #expect(AppleSpeechLocalePresentation.initialLocaleIdentifier(
+            storedIdentifier: nil,
+            equivalentCurrentLocale: Locale(identifier: "en-US")
+        ) == "en-US")
+        #expect(AppleSpeechLocalePresentation.initialLocaleIdentifier(
+            storedIdentifier: "fr-FR",
+            equivalentCurrentLocale: Locale(identifier: "en-US")
+        ) == "fr-FR")
+        #expect(AppleSpeechLocalePresentation.initialLocaleIdentifier(
+            storedIdentifier: "  ",
+            equivalentCurrentLocale: nil
+        ) == nil)
+        #expect(AppleSpeechLocalePresentation.initialLocaleIdentifier(
+            storedIdentifier: nil,
+            equivalentCurrentLocale: nil
+        ) == nil)
+    }
+
+    @Test("Locale discovery is read-only and supports current-locale equivalence")
+    func supportedLocaleDiscoveryIsReadOnly() async {
+        let supported = [Locale(identifier: "en-US"), Locale(identifier: "fr-FR")]
+        let equivalent = Locale(identifier: "en-US")
+        let boundary = FakeAppleSpeechAssetBoundary(
+            status: .supported,
+            supportedLocales: supported,
+            equivalentLocale: equivalent
+        )
+        let manager = AppleSpeechAssetManager(boundary: boundary)
+
+        #expect(await manager.supportedLocales() == supported)
+        #expect(await manager.supportedLocale(equivalentTo: Locale(identifier: "en-GB")) == equivalent)
+        #expect(await boundary.supportedLocalesReadCount == 1)
+        #expect(await boundary.supportedLocaleReadCount == 1)
+        #expect(await boundary.requestCount == 0)
+        #expect(await boundary.releaseCount == 0)
+    }
+
     @Test("Asset acquisition records failure without claiming installation")
     func assetAcquisitionFailure() async {
         let boundary = FakeAppleSpeechAssetBoundary(status: .supported, installationError: FakeAssetError.failed)
@@ -201,13 +278,34 @@ private enum FakeAssetError: Error, Equatable {
 private actor FakeAppleSpeechAssetBoundary: AppleSpeechAssetBoundary {
     var statusValue: AppleSpeechAssetInventoryStatus
     let installationError: Error?
+    let supportedLocalesValue: [Locale]
+    let equivalentLocale: Locale?
     private(set) var requestCount = 0
     private(set) var reservedLocalesReadCount = 0
     private(set) var releaseCount = 0
+    private(set) var supportedLocalesReadCount = 0
+    private(set) var supportedLocaleReadCount = 0
 
-    init(status: AppleSpeechAssetInventoryStatus, installationError: Error? = nil) {
+    init(
+        status: AppleSpeechAssetInventoryStatus,
+        installationError: Error? = nil,
+        supportedLocales: [Locale] = [],
+        equivalentLocale: Locale? = nil
+    ) {
         self.statusValue = status
         self.installationError = installationError
+        self.supportedLocalesValue = supportedLocales
+        self.equivalentLocale = equivalentLocale
+    }
+
+    func supportedLocales() async -> [Locale] {
+        supportedLocalesReadCount += 1
+        return supportedLocalesValue
+    }
+
+    func supportedLocale(equivalentTo locale: Locale) async -> Locale? {
+        supportedLocaleReadCount += 1
+        return equivalentLocale
     }
 
     func status(for locale: Locale) async -> AppleSpeechAssetInventoryStatus {

@@ -60,7 +60,7 @@ struct VoiceInkApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView()
+            MenuBarView(appleSpeechAssetManager: appleSpeechAssetManager)
                 .environmentObject(engine)
                 .environmentObject(recorderUIManager)
                 .environmentObject(fluidAudioModelManager)
@@ -70,7 +70,7 @@ struct VoiceInkApp: App {
         .menuBarExtraStyle(.menu)
 
         Settings {
-            SettingsView()
+            SettingsView(appleSpeechAssetManager: appleSpeechAssetManager)
                 .environmentObject(recordingShortcutManager)
                 .environmentObject(fluidAudioModelManager)
         }
