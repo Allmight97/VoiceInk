@@ -96,6 +96,20 @@ private struct GeneralSettingsView: View {
                 }
                 Toggle("Keep Debug Recordings", isOn: $debugKeepRecordings)
             }
+
+            Section("About") {
+                LabeledContent("Version", value: AppMetadata.versionDisplay)
+
+                Link(destination: AppMetadata.changelogURL) {
+                    HStack {
+                        Text("View Changelog")
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }

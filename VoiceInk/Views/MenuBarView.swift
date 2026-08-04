@@ -51,6 +51,11 @@ struct MenuBarView: View {
 
             Divider()
 
+            Button("About VoiceInk…") {
+                NSApplication.shared.orderFrontStandardAboutPanel(nil)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }

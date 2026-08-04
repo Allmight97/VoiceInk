@@ -129,6 +129,12 @@ struct VoiceInkTests {
         ))
     }
 
+    @Test("App metadata presents version/build and the canonical changelog")
+    func appMetadataPresentation() {
+        #expect(AppMetadata.versionDisplay(shortVersion: "1.1.0", build: "1") == "1.1.0 (1)")
+        #expect(AppMetadata.changelogURL.absoluteString == "https://github.com/Allmight97/VoiceInk/blob/main/CHANGELOG.md")
+    }
+
     @Test("Stale notification dismissals cannot close a replacement")
     @MainActor
     func notificationReplacementDismissalUsesCurrentToken() {

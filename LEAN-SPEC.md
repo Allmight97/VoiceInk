@@ -14,6 +14,8 @@ is pasted into the frontmost app.
 - Settings exposes two local transcription backends: Parakeet v2 is the
   default, and Apple Speech is optional. Backend and Apple locale changes apply
   to the next recording, not one already in progress.
+- Settings shows the running app version and links to this fork's changelog;
+  the menu-bar menu exposes the standard About VoiceInk panel.
 - Parakeet v2 model acquisition and Apple Speech language acquisition are
   explicit Settings actions. Recording is blocked until the selected assets
   are ready and while they are downloading. Dictation never initiates a
