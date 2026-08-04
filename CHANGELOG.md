@@ -3,7 +3,7 @@
 This is the release history for the independently maintained lean-local
 VoiceInk fork. It is derived from VoiceInk and remains licensed under GPL-3.0.
 
-## Unreleased
+## 1.1.0 — Apple Speech local backend
 
 - Add Apple Speech as an optional on-device transcription backend while keeping
   Parakeet v2 as the default.
