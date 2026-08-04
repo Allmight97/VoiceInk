@@ -62,10 +62,6 @@ struct Shortcut: Codable, Equatable {
         )
     }
 
-    static var rightCommand: Self {
-        .modifierOnly(keyCode: UInt16(kVK_RightCommand), modifierFlags: [.command])
-    }
-
     func conflicts(with other: Shortcut) -> Bool {
         kind == other.kind &&
             keyCode == other.keyCode &&
@@ -407,29 +403,4 @@ private extension NSEvent.ModifierFlags {
         ].filter { contains($0) }.count
     }
 
-    static func shortcutFlags(fromCarbonModifiers carbonModifiers: Int) -> NSEvent.ModifierFlags {
-        var flags: NSEvent.ModifierFlags = []
-
-        if carbonModifiers & Int(controlKey) != 0 {
-            flags.insert(.control)
-        }
-
-        if carbonModifiers & Int(optionKey) != 0 {
-            flags.insert(.option)
-        }
-
-        if carbonModifiers & Int(shiftKey) != 0 {
-            flags.insert(.shift)
-        }
-
-        if carbonModifiers & Int(cmdKey) != 0 {
-            flags.insert(.command)
-        }
-
-        if carbonModifiers & (1 << 17) != 0 {
-            flags.insert(.function)
-        }
-
-        return flags
-    }
 }

@@ -62,7 +62,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             await startRecording()
         case .starting, .recording:
             await stopAndTranscribe()
-        case .transcribing, .enhancing, .busy:
+        case .transcribing:
             await cancelRecording()
         }
     }

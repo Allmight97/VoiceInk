@@ -1,19 +1,10 @@
 import Foundation
 import CoreAudio
-import AVFoundation
 import os
-
-struct PrioritizedDevice: Codable, Identifiable {
-    let id: String
-    let name: String
-    let priority: Int
-    var modelUID: String?
-}
 
 enum AudioInputMode: String, CaseIterable {
     case systemDefault = "System Default"
     case custom = "Custom Device"
-    case prioritized = "Prioritized"
 }
 
 @MainActor
@@ -22,15 +13,12 @@ final class AudioDeviceManager: ObservableObject {
     @Published var availableDevices: [(id: AudioDeviceID, uid: String, name: String)] = []
     @Published var selectedDeviceID: AudioDeviceID?
     @Published var inputMode: AudioInputMode = .custom
-    @Published var prioritizedDevices: [PrioritizedDevice] = []
 
     var isRecordingActive: Bool = false
 
     static let shared = AudioDeviceManager()
 
     init() {
-        loadPrioritizedDevices()
-
         if let savedMode = UserDefaults.standard.audioInputModeRawValue,
            let mode = AudioInputMode(rawValue: savedMode) {
             inputMode = mode
@@ -75,17 +63,10 @@ final class AudioDeviceManager: ObservableObject {
         return deviceID
     }
 
-    func getSystemDefaultDeviceName() -> String? {
-        guard let deviceID = getSystemDefaultDevice() else { return nil }
-        return getDeviceName(deviceID: deviceID)
-    }
-    
     private func initializeSelectedDevice() {
         switch inputMode {
         case .systemDefault:
             break
-        case .prioritized:
-            selectHighestPriorityAvailableDevice()
         case .custom:
             if let savedUID = UserDefaults.standard.selectedAudioDeviceUID {
                 let savedModelUID = UserDefaults.standard.selectedAudioDeviceModelUID
@@ -204,11 +185,7 @@ final class AudioDeviceManager: ObservableObject {
             self.availableDevices = devices.map { ($0.id, $0.uid, $0.name) }
             if let currentID = self.selectedDeviceID, !devices.contains(where: { $0.id == currentID }) {
                 if !self.isRecordingActive {
-                    if self.inputMode == .prioritized {
-                        self.selectHighestPriorityAvailableDevice()
-                    } else {
-                        self.fallbackToDefaultDevice()
-                    }
+                    self.fallbackToDefaultDevice()
                 }
             }
             completion?()
@@ -329,10 +306,6 @@ final class AudioDeviceManager: ObservableObject {
                     selectDevice(id: firstDevice.id)
                 }
             }
-        case .prioritized:
-            if selectedDeviceID == nil {
-                selectHighestPriorityAvailableDevice()
-            }
         }
 
         notifyDeviceChange()
@@ -347,83 +320,7 @@ final class AudioDeviceManager: ObservableObject {
                 return id
             }
             return findBestAvailableDevice() ?? 0
-        case .prioritized:
-            let sortedDevices = prioritizedDevices.sorted { $0.priority < $1.priority }
-            for device in sortedDevices {
-                if let available = availableDevices.first(where: { $0.uid == device.id }) {
-                    return available.id
-                }
-            }
-            return findBestAvailableDevice() ?? 0
         }
-    }
-    
-    private func loadPrioritizedDevices() {
-        if let data = UserDefaults.standard.prioritizedDevicesData,
-           let devices = try? JSONDecoder().decode([PrioritizedDevice].self, from: data) {
-            prioritizedDevices = devices
-        }
-    }
-    
-    func savePrioritizedDevices() {
-        if let data = try? JSONEncoder().encode(prioritizedDevices) {
-            UserDefaults.standard.prioritizedDevicesData = data
-        }
-    }
-    
-    func addPrioritizedDevice(uid: String, name: String) {
-        guard !prioritizedDevices.contains(where: { $0.id == uid }) else { return }
-        let modelUID = availableDevices.first(where: { $0.uid == uid })
-            .flatMap { getDeviceModelUID(deviceID: $0.id) }
-        let nextPriority = (prioritizedDevices.map { $0.priority }.max() ?? -1) + 1
-        let device = PrioritizedDevice(id: uid, name: name, priority: nextPriority, modelUID: modelUID)
-        prioritizedDevices.append(device)
-        savePrioritizedDevices()
-    }
-
-    func removePrioritizedDevice(id: String) {
-        let wasSelected = selectedDeviceID == availableDevices.first(where: { $0.uid == id })?.id
-        prioritizedDevices.removeAll { $0.id == id }
-
-        let updatedDevices = prioritizedDevices.enumerated().map { index, device in
-            PrioritizedDevice(id: device.id, name: device.name, priority: index, modelUID: device.modelUID)
-        }
-        
-        prioritizedDevices = updatedDevices
-        savePrioritizedDevices()
-        
-        if wasSelected && inputMode == .prioritized {
-            selectHighestPriorityAvailableDevice()
-        }
-    }
-    
-    func updatePriorities(devices: [PrioritizedDevice]) {
-        prioritizedDevices = devices
-        savePrioritizedDevices()
-        
-        if inputMode == .prioritized {
-            selectHighestPriorityAvailableDevice()
-        }
-        
-        notifyDeviceChange()
-    }
-    
-    private func selectHighestPriorityAvailableDevice() {
-        let sortedDevices = prioritizedDevices.sorted { $0.priority < $1.priority }
-
-        for saved in sortedDevices {
-            guard let found = findAvailableDevice(uid: saved.id, modelUID: saved.modelUID) else {
-                continue
-            }
-            selectedDeviceID = found.id
-            if found.uid != saved.id || saved.modelUID == nil {
-                rebindPrioritizedDevice(savedUID: saved.id, newUID: found.uid, newModelUID: getDeviceModelUID(deviceID: found.id))
-            }
-            notifyDeviceChange()
-            return
-        }
-
-        fallbackToDefaultDevice()
     }
     
     private func setupDeviceChangeNotifications() {
@@ -468,21 +365,7 @@ final class AudioDeviceManager: ObservableObject {
                 if !self.isDeviceAvailable(currentID) {
                     self.logger.warning("🎙️ Recording device \(currentID, privacy: .public) no longer available - requesting switch")
 
-                    let newDeviceID: AudioDeviceID?
-                    if self.inputMode == .prioritized {
-                        let sortedDevices = self.prioritizedDevices.sorted { $0.priority < $1.priority }
-                        let priorityDeviceID = sortedDevices.compactMap { device in
-                            self.availableDevices.first(where: { $0.uid == device.id })?.id
-                        }.first
-
-                        if let deviceID = priorityDeviceID {
-                            newDeviceID = deviceID
-                        } else {
-                            newDeviceID = self.findBestAvailableDevice()
-                        }
-                    } else {
-                        newDeviceID = self.findBestAvailableDevice()
-                    }
+                    let newDeviceID = self.findBestAvailableDevice()
 
                     if let deviceID = newDeviceID {
                         self.selectedDeviceID = deviceID
@@ -499,9 +382,7 @@ final class AudioDeviceManager: ObservableObject {
                 return
             }
 
-            if self.inputMode == .prioritized {
-                self.selectHighestPriorityAvailableDevice()
-            } else if self.inputMode == .custom {
+            if self.inputMode == .custom {
                 self.reconcileCustomDeviceAfterListChange()
             }
         }
@@ -530,15 +411,6 @@ final class AudioDeviceManager: ObservableObject {
             return found
         }
         return nil
-    }
-
-    private func rebindPrioritizedDevice(savedUID: String, newUID: String, newModelUID: String?) {
-        prioritizedDevices.removeAll { $0.id == newUID && $0.id != savedUID }
-        prioritizedDevices = prioritizedDevices.map { device in
-            guard device.id == savedUID else { return device }
-            return PrioritizedDevice(id: newUID, name: device.name, priority: device.priority, modelUID: newModelUID ?? device.modelUID)
-        }
-        savePrioritizedDevices()
     }
 
     private func updateCustomDeviceHints(deviceID: AudioDeviceID, uid: String, modelUID: String? = nil) {

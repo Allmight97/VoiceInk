@@ -2,13 +2,6 @@ import Foundation
 
 @MainActor
 final class RecordingShortcutManager: ObservableObject {
-    @Published var primaryRecordingShortcut: ShortcutSelection {
-        didSet {
-            UserDefaults.standard.set(primaryRecordingShortcut.rawValue, forKey: "primaryRecordingShortcut")
-            refreshShortcutMonitoring()
-        }
-    }
-
     @Published var primaryRecordingShortcutMode: Mode {
         didSet {
             UserDefaults.standard.set(primaryRecordingShortcutMode.rawValue, forKey: "primaryRecordingShortcutMode")
@@ -32,11 +25,6 @@ final class RecordingShortcutManager: ObservableObject {
         }
     }
 
-    enum ShortcutSelection: String, CaseIterable {
-        case custom
-        case none
-    }
-
     private weak var engine: VoiceInkEngine?
     private weak var recorderUIManager: RecorderUIManager?
     private let shortcutMonitor = ShortcutMonitor()
@@ -46,9 +34,6 @@ final class RecordingShortcutManager: ObservableObject {
     init(engine: VoiceInkEngine, recorderUIManager: RecorderUIManager) {
         self.engine = engine
         self.recorderUIManager = recorderUIManager
-
-        let savedSelection = UserDefaults.standard.string(forKey: "primaryRecordingShortcut")
-        self.primaryRecordingShortcut = ShortcutSelection(rawValue: savedSelection ?? "") ?? .custom
 
         let savedMode = UserDefaults.standard.string(forKey: "primaryRecordingShortcutMode")
         self.primaryRecordingShortcutMode = Mode(rawValue: savedMode ?? "") ?? .toggle
@@ -67,18 +52,13 @@ final class RecordingShortcutManager: ObservableObject {
         refreshShortcutMonitoring()
     }
 
-    var isShortcutConfigured: Bool {
-        primaryRecordingShortcut == .custom && ShortcutStore.shortcut(for: .primaryRecording) != nil
-    }
-
     func updateShortcutStatus() {
         objectWillChange.send()
         refreshShortcutMonitoring()
     }
 
     private func refreshShortcutMonitoring() {
-        guard primaryRecordingShortcut == .custom,
-              let shortcut = ShortcutStore.shortcut(for: .primaryRecording) else {
+        guard let shortcut = ShortcutStore.shortcut(for: .primaryRecording) else {
             shortcutMonitor.stop()
             return
         }

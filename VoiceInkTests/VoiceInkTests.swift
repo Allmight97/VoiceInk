@@ -60,9 +60,7 @@ struct VoiceInkTests {
             (.idle, "Idle", "Start Dictation", false, "Start recording", false),
             (.starting, "Starting", "Start Dictation", true, "Starting recording", true),
             (.recording, "Recording", "Stop Dictation", false, "Stop recording", false),
-            (.transcribing, "Transcribing", "Start Dictation", true, "Transcribing recording", true),
-            (.enhancing, "Processing", "Start Dictation", false, "Processing recording", true),
-            (.busy, "Busy", "Start Dictation", false, "Recorder unavailable", true)
+            (.transcribing, "Transcribing", "Start Dictation", true, "Transcribing recording", true)
         ]
 
         for (state, status, actionTitle, actionDisabled, accessibilityLabel, buttonDisabled) in expected {

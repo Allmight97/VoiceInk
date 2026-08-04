@@ -2,20 +2,6 @@ import Foundation
 import SwiftUI
 import os
 
-enum RecorderPanelStyle: String, CaseIterable, Identifiable {
-    case mini
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        String(localized: "Mini")
-    }
-
-    static var stored: RecorderPanelStyle {
-        .mini
-    }
-}
-
 @MainActor
 protocol RecorderPanelPresenting: AnyObject {
     var isRecorderPanelVisible: Bool { get }
@@ -24,7 +10,6 @@ protocol RecorderPanelPresenting: AnyObject {
 
 @MainActor
 final class RecorderUIManager: ObservableObject, RecorderPanelPresenting {
-    @Published var recorderPanelStyle: RecorderPanelStyle = .mini
     @Published var isRecorderPanelVisible = false {
         didSet {
             guard oldValue != isRecorderPanelVisible else { return }
@@ -83,9 +68,9 @@ final class RecorderUIManager: ObservableObject, RecorderPanelPresenting {
             switch engine.recordingState {
             case .recording, .starting:
                 await engine.toggleRecord()
-            case .transcribing, .enhancing:
+            case .transcribing:
                 await cancelRecording()
-            case .idle, .busy:
+            case .idle:
                 await dismissRecorderPanel()
             }
         } else {

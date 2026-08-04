@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import Carbon
 import os
 
 class CursorPaster {
@@ -8,43 +7,20 @@ class CursorPaster {
     private typealias ClipboardSnapshot = [ClipboardItemSnapshot]
     private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "CursorPaster")
 
-    enum PasteResult: Equatable {
-        case commandPosted
-        case commandNotPosted
-
-        var didPostPasteCommand: Bool {
-            self == .commandPosted
-        }
-    }
-
     private static let prePasteDelay: TimeInterval = 0.10
     private static let pasteShortcutEventDelay: TimeInterval = 0.01
     private static let minimumClipboardRestoreDelay: TimeInterval = 0.25
 
-    static func pasteAtCursor(_ text: String) {
-        Task {
-            let pasteTask = await MainActor.run {
-                startPasteAtCursor(text)
-            }
-            _ = await pasteTask.value
-        }
-    }
-
     @MainActor
     @discardableResult
-    static func startPasteAtCursor(_ text: String) -> Task<PasteResult, Never> {
+    static func startPasteAtCursor(_ text: String) -> Task<Void, Never> {
         Task { @MainActor in
             await performPasteSession(text)
         }
     }
 
     @MainActor
-    static func pasteAtCursorAndWaitUntilPosted(_ text: String) async -> PasteResult {
-        await startPasteAtCursor(text).value
-    }
-
-    @MainActor
-    private static func performPasteSession(_ text: String) async -> PasteResult {
+    private static func performPasteSession(_ text: String) async {
         let pasteboard = NSPasteboard.general
         let shouldRestoreClipboard = UserDefaults.standard.bool(forKey: "restoreClipboardAfterPaste")
         let savedContents = shouldRestoreClipboard ? snapshotClipboard(from: pasteboard) : []
@@ -56,12 +32,12 @@ class CursorPaster {
             sessionID: shouldRestoreClipboard ? sessionID : nil
         ) else {
             logger.error("Failed to prepare clipboard for paste")
-            return .commandNotPosted
+            return
         }
 
         await wait(prePasteDelay)
 
-        let pasteResult = await postPasteCommand()
+        await pasteFromClipboard()
         if shouldRestoreClipboard {
             scheduleClipboardRestore(
                 savedContents,
@@ -70,8 +46,6 @@ class CursorPaster {
                 on: pasteboard
             )
         }
-
-        return pasteResult
     }
 
     private static func snapshotClipboard(from pasteboard: NSPasteboard) -> ClipboardSnapshot {
@@ -82,15 +56,6 @@ class CursorPaster {
                 }
                 return nil
             }
-        }
-    }
-
-    @MainActor
-    private static func postPasteCommand() async -> PasteResult {
-        if PasteMethod.current() == .appleScript {
-            return pasteUsingAppleScript() ? .commandPosted : .commandNotPosted
-        } else {
-            return await pasteFromClipboard()
         }
     }
 
@@ -137,53 +102,12 @@ class CursorPaster {
         }
     }
 
-    // MARK: - AppleScript paste
-
-    // "X – QWERTY ⌘" layouts remap to QWERTY when Command is held, so keystroke "v" resolves
-    // the wrong key code. key code 9 (physical V) bypasses layout translation for those layouts.
-    @MainActor
-    private static func makeScript(_ source: String) -> NSAppleScript? {
-        let script = NSAppleScript(source: source)
-        var error: NSDictionary?
-        script?.compileAndReturnError(&error)
-        return script
-    }
-
-    @MainActor
-    private static let pasteScriptKeystroke = makeScript("tell application \"System Events\" to keystroke \"v\" using command down")
-    @MainActor
-    private static let pasteScriptKeyCode   = makeScript("tell application \"System Events\" to key code 9 using command down")
-
-    @MainActor
-    private static var layoutSwitchesToQWERTYOnCommand: Bool {
-        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        guard let nameRef = TISGetInputSourceProperty(source, kTISPropertyLocalizedName) else { return false }
-        return (Unmanaged<CFString>.fromOpaque(nameRef).takeUnretainedValue() as String).hasSuffix("⌘")
-    }
-
-    @MainActor
-    private static func pasteUsingAppleScript() -> Bool {
-        guard let script = layoutSwitchesToQWERTYOnCommand ? pasteScriptKeyCode : pasteScriptKeystroke else {
-            logger.error("AppleScript paste script is unavailable")
-            return false
-        }
-
-        var error: NSDictionary?
-        script.executeAndReturnError(&error)
-        if let error {
-            logger.error("AppleScript paste failed: \(String(describing: error), privacy: .public)")
-        }
-        return error == nil
-    }
-
-    // MARK: - CGEvent paste
-
     // Posts Cmd+V via CGEvent without modifying the active input source.
     @MainActor
-    private static func pasteFromClipboard() async -> PasteResult {
+    private static func pasteFromClipboard() async {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility permission is required to paste with simulated key events")
-            return .commandNotPosted
+            return
         }
 
         let source = CGEventSource(stateID: .privateState)
@@ -193,7 +117,7 @@ class CursorPaster {
               let vUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false),
               let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: false) else {
             logger.error("Failed to create Cmd+V keyboard events")
-            return .commandNotPosted
+            return
         }
 
         cmdDown.flags = .maskCommand
@@ -207,8 +131,6 @@ class CursorPaster {
         vUp.post(tap: .cghidEventTap)
         await wait(pasteShortcutEventDelay)
         cmdUp.post(tap: .cghidEventTap)
-
-        return .commandPosted
     }
 
     private static func wait(_ seconds: TimeInterval) async {

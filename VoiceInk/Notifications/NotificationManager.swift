@@ -19,9 +19,7 @@ final class NotificationManager {
     func showNotification(
         title: String,
         type: AppNotificationView.NotificationType,
-        duration: TimeInterval = 3.0,
-        onTap: (() -> Void)? = nil,
-        actionButton: (label: String, action: () -> Void)? = nil
+        duration: TimeInterval = 3.0
     ) {
         let notificationID = UUID()
         self.notificationID = notificationID
@@ -45,9 +43,7 @@ final class NotificationManager {
                 Task { @MainActor in
                     self?.dismissNotification(for: notificationID)
                 }
-            },
-            onTap: onTap,
-            actionButton: actionButton
+            }
         )
         let hostingController = NSHostingController(rootView: notificationView)
         let size = hostingController.view.fittingSize

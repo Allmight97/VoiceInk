@@ -44,41 +44,6 @@ enum ShortcutStore {
         )
     }
 
-    static func seedShortcut(
-        _ shortcut: Shortcut,
-        for action: ShortcutAction,
-        replacingCleared: Bool = false
-    ) {
-        guard action.isStored,
-              rawShortcut(for: action) == nil,
-              replacingCleared || !isShortcutCleared(for: action) else {
-            return
-        }
-
-        setShortcut(shortcut, for: action)
-    }
-
-    static func removeShortcutStorage(for action: ShortcutAction) {
-        guard action.isStored else {
-            return
-        }
-
-        UserDefaults.standard.removeObject(forKey: action.userDefaultsKey)
-        UserDefaults.standard.removeObject(forKey: clearedUserDefaultsKey(for: action))
-        NotificationCenter.default.post(
-            name: shortcutDidChange,
-            object: action
-        )
-    }
-
-    static func shortcuts(for actions: [ShortcutAction]) -> [ShortcutAction: Shortcut] {
-        actions.reduce(into: [:]) { result, action in
-            if let shortcut = shortcut(for: action) {
-                result[action] = shortcut
-            }
-        }
-    }
-
     static func isShortcutCleared(for action: ShortcutAction) -> Bool {
         UserDefaults.standard.bool(forKey: clearedUserDefaultsKey(for: action))
     }

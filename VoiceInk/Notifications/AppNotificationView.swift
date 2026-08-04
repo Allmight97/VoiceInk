@@ -6,8 +6,6 @@ struct AppNotificationView: View {
     let type: NotificationType
     let duration: TimeInterval
     let onClose: () -> Void
-    let onTap: (() -> Void)?
-    var actionButton: (label: String, action: () -> Void)? = nil
     
     @State private var progress: Double = 1.0
     @State private var timer: Timer?
@@ -16,14 +14,12 @@ struct AppNotificationView: View {
         case error
         case warning
         case info
-        case success
 
         var iconName: String {
             switch self {
             case .error: return "xmark.octagon.fill"
             case .warning: return "exclamationmark.triangle.fill"
             case .info: return "info.circle.fill"
-            case .success: return "checkmark.circle.fill"
             }
         }
 
@@ -32,7 +28,6 @@ struct AppNotificationView: View {
             case .error: return AppTheme.Status.error
             case .warning: return AppTheme.Status.warning
             case .info: return AppTheme.Status.info
-            case .success: return AppTheme.Status.success
             }
         }
     }
@@ -55,22 +50,6 @@ struct AppNotificationView: View {
                     .multilineTextAlignment(.leading)
                 
                 Spacer()
-
-                if let actionButton {
-                    Button(action: {
-                        actionButton.action()
-                        onClose()
-                    }) {
-                        Text(actionButton.label)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.14))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -132,12 +111,6 @@ struct AppNotificationView: View {
         }
         .onDisappear {
             timer?.invalidate()
-        }
-        .onTapGesture {
-            if let onTap = onTap {
-                onTap()
-                onClose()
-            }
         }
     }
     

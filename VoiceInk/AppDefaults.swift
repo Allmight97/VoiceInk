@@ -37,24 +37,16 @@ enum AppDefaults {
         UserDefaults.standard.register(defaults: [
             "restoreClipboardAfterPaste": false,
             "clipboardRestoreDelay": 2.0,
-            "useAppleScriptPaste": false,
-            PasteMethod.userDefaultsKey: PasteMethod.standard.rawValue,
-            "SelectedLanguage": "en",
-            "AppendTrailingSpace": false,
-            "RecorderType": "mini",
             RecorderDisplaySettingsKeys.showLiveTranscript: false,
             RecorderDisplaySettingsKeys.panelPosition: RecorderPanelPosition.bottomCenter.rawValue,
             enableHistoryLog: true,
-            "IsMenuBarOnly": true,
             soundFeedbackEnabled: true,
             wordReplacementEnabled: false,
             wordReplacements: [:],
             unloadModelAfterIdleMinutes: 0,
             debugKeepRecordings: false,
-            "primaryRecordingShortcut": RecordingShortcutManager.ShortcutSelection.custom.rawValue,
             "primaryRecordingShortcutMode": RecordingShortcutManager.Mode.toggle.rawValue
         ])
 
-        PasteMethod.migrateLegacyUserDefaultIfNeeded()
     }
 }

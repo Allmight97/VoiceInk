@@ -35,10 +35,6 @@ final class MiniRecorderWindowController {
         panel?.orderOut(nil)
     }
 
-    func destroyWindow() {
-        deinitializeWindow()
-    }
-
     private func initializeWindow() {
         deinitializeWindow()
         let metrics = MiniRecorderPanel.calculateWindowMetrics()

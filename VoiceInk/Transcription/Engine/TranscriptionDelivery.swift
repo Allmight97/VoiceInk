@@ -13,7 +13,7 @@ final class TranscriptionDelivery {
     init(
         playStopSound: @escaping () -> Void = { StartStopSound.playStop() },
         paste: @escaping (String) async -> Void = { text in
-            _ = await CursorPaster.startPasteAtCursor(text).value
+            await CursorPaster.startPasteAtCursor(text).value
         }
     ) {
         self.playStopSound = playStopSound

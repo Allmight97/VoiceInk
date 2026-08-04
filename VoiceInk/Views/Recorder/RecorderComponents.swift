@@ -6,11 +6,11 @@ struct RecorderRecordButton: View {
 
     private var visualState: VisualState {
         switch recordingState {
-        case .idle, .busy:
+        case .idle:
             return .ready
         case .starting, .recording:
             return .recording
-        case .transcribing, .enhancing:
+        case .transcribing:
             return .processing
         }
     }
@@ -23,7 +23,7 @@ struct RecorderRecordButton: View {
         switch state {
         case .idle, .recording:
             return false
-        case .starting, .transcribing, .enhancing, .busy:
+        case .starting, .transcribing:
             return true
         }
     }
@@ -95,10 +95,6 @@ struct RecorderRecordButton: View {
             return String(localized: "Stop recording")
         case .transcribing:
             return String(localized: "Transcribing recording")
-        case .enhancing:
-            return String(localized: "Processing recording")
-        case .busy:
-            return String(localized: "Recorder unavailable")
         }
     }
 
@@ -239,7 +235,7 @@ struct RecorderStatusDisplay: View {
 
     var body: some View {
         Group {
-            if currentState == .transcribing || currentState == .enhancing {
+            if currentState == .transcribing {
                 ProcessingStatusDisplay(color: .white).transition(.opacity)
             } else if currentState == .recording {
                 AudioVisualizer(audioMeter: audioMeter, color: .white, isActive: true)

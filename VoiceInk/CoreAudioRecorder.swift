@@ -240,10 +240,6 @@ final class CoreAudioRecorder: @unchecked Sendable {
         resetMeters()
     }
 
-    var isCurrentlyRecording: Bool { isRecording }
-    var currentRecordingURL: URL? { recordingURL }
-    var currentDevice: AudioDeviceID { currentDeviceID }
-
     /// Switches to a new input device mid-recording without stopping the file write
     func switchDevice(to newDeviceID: AudioDeviceID) throws {
         guard isRecording, let unit = audioUnit else {

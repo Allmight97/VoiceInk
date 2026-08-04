@@ -56,10 +56,6 @@ struct MenuBarView: View {
             return "Recording"
         case .transcribing:
             return "Transcribing"
-        case .enhancing:
-            return "Processing"
-        case .busy:
-            return "Busy"
         }
     }
 

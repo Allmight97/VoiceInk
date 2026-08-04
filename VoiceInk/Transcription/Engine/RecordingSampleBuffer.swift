@@ -93,42 +93,4 @@ enum WAVEncoder {
         }
     }
 
-    static func write(samples: [Float], to url: URL) throws {
-        var pcm = Data(capacity: samples.count * 2)
-        for sample in samples {
-            var value = Int16(max(-32768, min(32767, sample * 32767))).littleEndian
-            withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
-        }
-
-        let sampleRate: UInt32 = 16_000
-        let byteRate = sampleRate * 2
-        var header = Data()
-        header.append(contentsOf: Array("RIFF".utf8))
-        header.append(uint32: UInt32(36 + pcm.count))
-        header.append(contentsOf: Array("WAVE".utf8))
-        header.append(contentsOf: Array("fmt ".utf8))
-        header.append(uint32: 16)
-        header.append(uint16: 1)          // PCM
-        header.append(uint16: 1)          // mono
-        header.append(uint32: sampleRate)
-        header.append(uint32: byteRate)
-        header.append(uint16: 2)          // block align
-        header.append(uint16: 16)         // bits per sample
-        header.append(contentsOf: Array("data".utf8))
-        header.append(uint32: UInt32(pcm.count))
-
-        try (header + pcm).write(to: url, options: .atomic)
-    }
-}
-
-private extension Data {
-    mutating func append(uint32 value: UInt32) {
-        var v = value.littleEndian
-        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
-    }
-
-    mutating func append(uint16 value: UInt16) {
-        var v = value.littleEndian
-        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
-    }
 }

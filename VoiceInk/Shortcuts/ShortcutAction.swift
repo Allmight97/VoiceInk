@@ -2,7 +2,6 @@ import Foundation
 
 enum ShortcutAction: Hashable {
     case primaryRecording
-    case cancelRecorder
     case recorderPanelEscape
 
     var userDefaultsKey: String {
@@ -13,7 +12,7 @@ enum ShortcutAction: Hashable {
         switch self {
         case .recorderPanelEscape:
             return false
-        case .primaryRecording, .cancelRecorder:
+        case .primaryRecording:
             return true
         }
     }
@@ -22,8 +21,6 @@ enum ShortcutAction: Hashable {
         switch self {
         case .primaryRecording:
             return "primaryRecording"
-        case .cancelRecorder:
-            return "cancelRecorder"
         case .recorderPanelEscape:
             return "recorderPanelEscape"
         }
@@ -33,19 +30,12 @@ enum ShortcutAction: Hashable {
         switch self {
         case .primaryRecording:
             return String(localized: "Primary Shortcut")
-        case .cancelRecorder:
-            return String(localized: "Cancel Recording")
         case .recorderPanelEscape:
             return String(localized: "Recorder Cancel")
         }
     }
 
-    static let recorderPanelStoredActions: [Self] = [
-        .cancelRecorder
-    ]
-
     static let storedActions: [Self] = [
-        .primaryRecording,
-        .cancelRecorder
+        .primaryRecording
     ]
 }

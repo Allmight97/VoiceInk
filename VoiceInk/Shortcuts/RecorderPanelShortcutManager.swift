@@ -6,7 +6,6 @@ import Foundation
 final class RecorderPanelShortcutManager: ObservableObject {
     private var recorderUIManager: RecorderUIManager
     private var visibilityTask: Task<Void, Never>?
-    private var shortcutChangeObserver: NSObjectProtocol?
     private let visibleRecorderMonitor = ShortcutMonitor()
     private var firstEscapePressTime: Date?
     private let escapeDoublePressThreshold: TimeInterval = 1.5
@@ -14,25 +13,7 @@ final class RecorderPanelShortcutManager: ObservableObject {
 
     init(recorderUIManager: RecorderUIManager) {
         self.recorderUIManager = recorderUIManager
-        setupShortcutChangeObserver()
         setupVisibilityObserver()
-    }
-
-    private func setupShortcutChangeObserver() {
-        shortcutChangeObserver = NotificationCenter.default.addObserver(
-            forName: ShortcutStore.shortcutDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let action = notification.object as? ShortcutAction,
-                  action == .cancelRecorder else {
-                return
-            }
-
-            Task { @MainActor in
-                self?.refreshVisibleShortcuts()
-            }
-        }
     }
 
     private func setupVisibilityObserver() {
@@ -55,13 +36,10 @@ final class RecorderPanelShortcutManager: ObservableObject {
             return
         }
 
-        var shortcuts = ShortcutStore.shortcuts(for: ShortcutAction.recorderPanelStoredActions)
-        if ShortcutStore.shortcut(for: .cancelRecorder) == nil {
-            shortcuts[.recorderPanelEscape] = .key(keyCode: UInt16(kVK_Escape), modifierFlags: [])
-        }
-
         visibleRecorderMonitor.start(
-            shortcuts: shortcuts,
+            shortcuts: [
+                .recorderPanelEscape: .key(keyCode: UInt16(kVK_Escape), modifierFlags: [])
+            ],
             onKeyDown: { [weak self] action, _ in
                 Task { @MainActor in
                     await self?.handleRecorderPanelShortcut(action)
@@ -72,22 +50,12 @@ final class RecorderPanelShortcutManager: ObservableObject {
     }
 
     private func handleRecorderPanelShortcut(_ action: ShortcutAction) async {
-        guard recorderUIManager.isRecorderPanelVisible else { return }
-
-        switch action {
-        case .cancelRecorder:
-            guard ShortcutStore.shortcut(for: .cancelRecorder) != nil else { return }
-            await recorderUIManager.cancelRecording()
-        case .recorderPanelEscape:
-            await handleEscapeShortcut()
-        case .primaryRecording:
-            break
-        }
+        guard recorderUIManager.isRecorderPanelVisible,
+              action == .recorderPanelEscape else { return }
+        await handleEscapeShortcut()
     }
 
     private func handleEscapeShortcut() async {
-        guard ShortcutStore.shortcut(for: .cancelRecorder) == nil else { return }
-
         let now = Date()
         if let firstTime = firstEscapePressTime,
            now.timeIntervalSince(firstTime) <= escapeDoublePressThreshold {
@@ -117,10 +85,6 @@ final class RecorderPanelShortcutManager: ObservableObject {
     }
 
     isolated deinit {
-        if let shortcutChangeObserver {
-            NotificationCenter.default.removeObserver(shortcutChangeObserver)
-        }
-
         visibilityTask?.cancel()
         MainActor.assumeIsolated {
             visibleRecorderMonitor.stop()

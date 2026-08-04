@@ -3,6 +3,17 @@
 This is the release history for the independently maintained lean-local
 VoiceInk fork. It is derived from VoiceInk and remains licensed under GPL-3.0.
 
+## Unreleased
+
+- Remove unreachable upstream assets, unused formatting and error types, and
+  dormant convenience APIs from the recorder, shortcut, paste, notification,
+  and Core Audio paths.
+- Retire hidden legacy prioritized-device, AppleScript-paste, and configurable
+  cancel-shortcut behavior; keep explicit system/custom input selection,
+  native CGEvent paste, and double-Escape cancellation.
+- Preserve the local model registry and acquisition-management substrate for
+  the model selection roadmap tracked in issue #10.
+
 ## 1.0.0 — Lean-local baseline
 
 - Establish the fork's independent release line and macOS 27 minimum.
