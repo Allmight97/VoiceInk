@@ -119,9 +119,12 @@ actor FluidAudioTranscriptionService {
     }
 
     func cleanup() async {
+        loadingTask?.task.cancel()
+        loadingTask = nil
         await asrManager?.cleanup()
         asrManager = nil
         activeVersion = nil
+        cachedModels = nil
     }
 
     private func ensureModelsLoaded(for version: AsrModelVersion) async throws {
