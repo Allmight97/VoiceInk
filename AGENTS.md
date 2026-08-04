@@ -8,10 +8,14 @@ from code and proof, then update the contract in the same change.
 ## Product boundary
 
 - Preserve the core path: one global shortcut controls microphone capture,
-  local Parakeet v2 transcribes it, and the filtered result is pasted into the
-  frontmost app.
-- Keep optional features off by default and keep the idle path free of timers,
-  network work, and recurring persistence tasks.
+  the selected local backend transcribes it, and the filtered result is pasted
+  into the frontmost app. Parakeet v2 is the default; Apple Speech is the only
+  optional backend.
+- Backend selection and Apple locale are captured when recording starts.
+  Dictation never acquires assets or falls back to another backend; acquisition
+  and reservation release are explicit Settings actions.
+- Keep the idle path free of timers, network work, and recurring persistence
+  tasks.
 - Do not reintroduce the removed cloud, AI-enhancement, licensing, updater,
   SwiftData/database, multi-mode, or multi-shortcut surfaces without an
   explicit product decision and an update to the owning spec.
@@ -21,22 +25,12 @@ from code and proof, then update the contract in the same change.
   concrete behavior boundary or test seam requires it; do not add speculative
   deep-module architecture.
 
-## Migration and proof contract
-
-Work in vertical slices that prove behavior before the next slice or cleanup:
-
-1. Establish the Xcode 27 build baseline and record warnings.
-2. Migrate recorder/capture concurrency ownership; prove start, stop, cancel,
-   and meter updates.
-3. Migrate UI and notification isolation; prove menu-bar and recorder-panel
-   behavior.
-4. Fix Core Audio pointer boundaries; prove device enumeration and capture.
-5. Enable Swift 6 language mode on macOS 27 and require a warning-free build.
+## Proof contract
 
 Swift 6 language mode on macOS 27 is a release criterion, not deferred cleanup.
-Every slice must add or update a test or targeted macOS runtime proof for its
-behavior. Keep `VoiceInkTests` (Swift Testing) and `VoiceInkUITests` (XCTest)
-meaningful; replace placeholder coverage when a slice depends on it.
+Every behavior change must add or update an automated test or targeted macOS
+runtime proof. Keep `VoiceInkTests` (Swift Testing) and `VoiceInkUITests`
+(XCTest) meaningful; replace placeholder coverage when a change depends on it.
 
 ## Build and test commands
 
@@ -55,5 +49,5 @@ meaningful; replace placeholder coverage when a slice depends on it.
   permanent requirements. Add no package without a named retained behavior;
   remove a current package when the migration proves it unnecessary.
 
-Keep roadmap state, issue links, session history, and agent/model routing in
-issues or ordinary documentation, not this file.
+Keep roadmap state, issue links, session history, and agent/model routing out
+of this file.

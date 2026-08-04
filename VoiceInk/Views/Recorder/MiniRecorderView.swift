@@ -5,7 +5,8 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     @ObservedObject var recorder: Recorder
     let onRecordButtonTapped: () -> Void
     let onCloseTapped: () -> Void
-    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript)
+    private var showLiveTranscript = RecorderDisplaySettingsKeys.showLiveTranscriptDefault
 
     private let controlBarHeight: CGFloat = 40
     private let compactWidth: CGFloat = 184

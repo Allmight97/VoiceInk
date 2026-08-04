@@ -119,9 +119,12 @@ actor FluidAudioTranscriptionService {
     }
 
     func cleanup() async {
+        loadingTask?.task.cancel()
+        loadingTask = nil
         await asrManager?.cleanup()
         asrManager = nil
         activeVersion = nil
+        cachedModels = nil
     }
 
     private func ensureModelsLoaded(for version: AsrModelVersion) async throws {
@@ -136,5 +139,22 @@ actor FluidAudioTranscriptionService {
         try await manager.loadModels(models)
         asrManager = manager
         activeVersion = version
+    }
+}
+
+extension FluidAudioTranscriptionService: TranscriptionBackend {
+    func isPrepared(for configuration: TranscriptionConfiguration) -> Bool {
+        isModelLoaded
+    }
+
+    func prepare(configuration: TranscriptionConfiguration) async throws {
+        try await loadModel()
+    }
+
+    func transcribe(
+        samples: [Float],
+        configuration: TranscriptionConfiguration
+    ) async throws -> String {
+        try await transcribe(samples: samples)
     }
 }

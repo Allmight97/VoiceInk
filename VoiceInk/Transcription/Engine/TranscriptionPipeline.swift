@@ -3,31 +3,26 @@ import os
 
 @MainActor
 final class TranscriptionPipeline {
-    private let transcribe: ([Float]) async throws -> String
     private let delivery: TranscriptionDelivery
     private let appendLog: (String) -> Void
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "TranscriptionPipeline")
 
-    init(fluidAudioService: FluidAudioTranscriptionService, delivery: TranscriptionDelivery) {
-        self.transcribe = { samples in
-            try await fluidAudioService.transcribe(samples: samples)
-        }
+    init(delivery: TranscriptionDelivery) {
         self.delivery = delivery
         self.appendLog = { text in TranscriptionLog.append(text: text) }
     }
 
     init(
-        transcribe: @escaping ([Float]) async throws -> String,
         delivery: TranscriptionDelivery,
         appendLog: @escaping (String) -> Void
     ) {
-        self.transcribe = transcribe
         self.delivery = delivery
         self.appendLog = appendLog
     }
 
     func run(
         samples: [Float],
+        transcribe: ([Float]) async throws -> String,
         isOperationCurrent: @escaping () -> Bool,
         onDismiss: @escaping () async -> Void
     ) async throws {
