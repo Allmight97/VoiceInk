@@ -12,7 +12,7 @@ struct MenuBarView: View {
 
     var body: some View {
         Text(statusText)
-        Text("\(model.displayName): \(engine.isCurrentModelLoaded ? "Loaded" : "Unloaded")")
+        Text("\(model.displayName): \(modelStatus)")
 
         Divider()
 
@@ -73,5 +73,17 @@ struct MenuBarView: View {
 
     private var statusText: String {
         Self.statusText(for: engine.recordingState)
+    }
+
+    private var modelStatus: String {
+        if modelManager.isFluidAudioModelDownloading(model) {
+            return String(localized: "Downloading")
+        }
+        guard modelManager.isFluidAudioModelDownloaded(model) else {
+            return String(localized: "Not Downloaded")
+        }
+        return engine.isCurrentModelLoaded
+            ? String(localized: "Loaded")
+            : String(localized: "Ready")
     }
 }

@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import CoreAudio
+import FluidAudio
 import SwiftUI
 @testable import VoiceInk
 
@@ -107,6 +108,173 @@ struct VoiceInkTests {
             notificationID: replacement,
             currentNotificationID: nil
         ))
+    }
+
+    @Test("A cancelled transcription operation cannot affect a newer operation")
+    @MainActor
+    func staleTranscriptionOperationIsNotCurrent() {
+        let cancelledOperation = UUID()
+        let replacementOperation = UUID()
+
+        #expect(!TranscriptionPipeline.isOperationCurrent(
+            operationID: cancelledOperation,
+            activeOperationID: replacementOperation,
+            isCancelled: false
+        ))
+        #expect(!TranscriptionPipeline.isOperationCurrent(
+            operationID: cancelledOperation,
+            activeOperationID: cancelledOperation,
+            isCancelled: true
+        ))
+        #expect(TranscriptionPipeline.isOperationCurrent(
+            operationID: replacementOperation,
+            activeOperationID: replacementOperation,
+            isCancelled: false
+        ))
+    }
+
+    @Test("Recorder close dismisses idle state and cancels active state")
+    @MainActor
+    func recorderCloseOwnsActiveCancellation() async {
+        var cancellationCount = 0
+        var dismissalCount = 0
+
+        await RecorderUIManager.performCloseAction(
+            recordingState: .idle,
+            cancel: { cancellationCount += 1 },
+            dismiss: { dismissalCount += 1 }
+        )
+        #expect(cancellationCount == 0)
+        #expect(dismissalCount == 1)
+
+        await RecorderUIManager.performCloseAction(
+            recordingState: .transcribing,
+            cancel: { cancellationCount += 1 },
+            dismiss: { dismissalCount += 1 }
+        )
+        #expect(cancellationCount == 1)
+        #expect(dismissalCount == 1)
+    }
+
+    @Test("Replacement operation prevents stale dismissal, paste, and logging")
+    @MainActor
+    func replacementOperationRejectsStaleDelivery() async throws {
+        let staleOperation = UUID()
+        let replacementOperation = UUID()
+        var activeOperation = staleOperation
+        var dismissCount = 0
+        var pastedTexts: [String] = []
+        var loggedTexts: [String] = []
+        let delivery = TranscriptionDelivery(
+            playStopSound: {},
+            paste: { pastedTexts.append($0) }
+        )
+        let pipeline = TranscriptionPipeline(
+            transcribe: { _ in
+                activeOperation = replacementOperation
+                return "stale text"
+            },
+            delivery: delivery,
+            appendLog: { loggedTexts.append($0) }
+        )
+
+        try await pipeline.run(
+            samples: [0],
+            isOperationCurrent: { activeOperation == staleOperation },
+            onDismiss: { dismissCount += 1 }
+        )
+
+        #expect(dismissCount == 0)
+        #expect(pastedTexts.isEmpty)
+        #expect(loggedTexts.isEmpty)
+    }
+
+    @Test("A transcription cancelled during panel dismissal is never pasted")
+    @MainActor
+    func cancellationDuringDismissPreventsPaste() async {
+        var isCurrent = true
+        var stopSoundCount = 0
+        var pastedTexts: [String] = []
+        let delivery = TranscriptionDelivery(
+            playStopSound: { stopSoundCount += 1 },
+            paste: { pastedTexts.append($0) }
+        )
+
+        await delivery.deliver(
+            text: "stale text",
+            actions: TranscriptionDelivery.Actions(
+                isOperationCurrent: { isCurrent },
+                dismiss: { isCurrent = false }
+            )
+        )
+
+        #expect(stopSoundCount == 1)
+        #expect(pastedTexts.isEmpty)
+    }
+
+    @Test("Missing cached models fail before invoking the loader")
+    func missingModelFailsWithoutLoading() async {
+        let loader = TestModelLoader()
+        let service = FluidAudioTranscriptionService(
+            modelStore: FluidAudioModelStore(
+                modelsExist: { _ in false },
+                loadFromCache: { version in
+                    try await loader.load(version)
+                }
+            )
+        )
+
+        do {
+            _ = try await service.getOrLoadModels(for: .v2)
+            #expect(Bool(false), "missing model should throw")
+        } catch let error as FluidAudioTranscriptionServiceError {
+            #expect(error == .modelNotDownloaded)
+        } catch {
+            #expect(Bool(false), "unexpected error: \(error)")
+        }
+
+        #expect(await loader.invocationCount == 0)
+    }
+
+    @Test("Explicit model acquisition restores offline mode")
+    @MainActor
+    func explicitModelAcquisitionRestoresOfflineMode() async {
+        FluidAudioNetworkPolicy.prohibitAutomaticDownloads()
+
+        let networkWasEnabledInsideAction = await FluidAudioNetworkPolicy.performExplicitDownload {
+            !DownloadUtils.enforceOffline
+        }
+
+        #expect(networkWasEnabledInsideAction)
+        #expect(DownloadUtils.enforceOffline)
+    }
+
+    @Test("Failed model acquisition also restores offline mode")
+    @MainActor
+    func failedModelAcquisitionRestoresOfflineMode() async {
+        FluidAudioNetworkPolicy.prohibitAutomaticDownloads()
+
+        do {
+            let _: Bool = try await FluidAudioNetworkPolicy.performExplicitDownload {
+                throw TestModelDownloadError.failed
+            }
+            #expect(Bool(false), "the fake download should throw")
+        } catch TestModelDownloadError.failed {
+            // Expected test-only failure.
+        } catch {
+            #expect(Bool(false), "unexpected error: \(error)")
+        }
+
+        #expect(DownloadUtils.enforceOffline)
+    }
+
+    @Test("Recording gate distinguishes ready, downloading, and missing models")
+    @MainActor
+    func recordingGateReflectsModelAcquisitionState() {
+        #expect(VoiceInkEngine.modelRecordingGate(isDownloading: false, isDownloaded: true) == .ready)
+        #expect(VoiceInkEngine.modelRecordingGate(isDownloading: true, isDownloaded: true) == .downloading)
+        #expect(VoiceInkEngine.modelRecordingGate(isDownloading: true, isDownloaded: false) == .downloading)
+        #expect(VoiceInkEngine.modelRecordingGate(isDownloading: false, isDownloaded: false) == .missing)
     }
 
     @Test("Recording sample buffer enforces its byte limit")
@@ -297,6 +465,19 @@ private final class TestRecorderState: ObservableObject, RecorderStateProvider {
 
 private enum TestRecordingCaptureError: Error {
     case startFailed
+}
+
+private enum TestModelDownloadError: Error {
+    case failed
+}
+
+private actor TestModelLoader {
+    private(set) var invocationCount = 0
+
+    func load(_ version: AsrModelVersion) async throws -> AsrModels {
+        invocationCount += 1
+        throw TestRecordingCaptureError.startFailed
+    }
 }
 
 private actor TestRecordingCapture: RecordingCapture {

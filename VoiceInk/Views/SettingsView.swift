@@ -27,6 +27,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsView: View {
     @EnvironmentObject private var shortcutManager: RecordingShortcutManager
+    @EnvironmentObject private var modelManager: FluidAudioModelManager
     @StateObject private var audioDeviceManager = AudioDeviceManager.shared
     @AppStorage(AppDefaults.soundFeedbackEnabled) private var soundFeedback = true
     @AppStorage(AppDefaults.unloadModelAfterIdleMinutes) private var unloadMinutes = 0
@@ -35,6 +36,10 @@ private struct GeneralSettingsView: View {
     @AppStorage(RecorderDisplaySettingsKeys.panelPosition) private var panelPosition = RecorderPanelPosition.bottomCenter.rawValue
     @AppStorage(AppDefaults.enableHistoryLog) private var historyLog = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private var model: FluidAudioModel {
+        TranscriptionModelRegistry.parakeetV2
+    }
 
     var body: some View {
         Form {
@@ -67,6 +72,52 @@ private struct GeneralSettingsView: View {
                     ForEach(RecorderPanelPosition.allCases) { position in
                         Text(position.displayName).tag(position.rawValue)
                     }
+                }
+            }
+
+            Section("Local Model") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.displayName)
+                        Text("Required for local dictation")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if modelManager.isFluidAudioModelDownloaded(model) {
+                        Label("Ready", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else if modelManager.isFluidAudioModelDownloading(model) {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Button("Download") {
+                            Task {
+                                await modelManager.downloadFluidAudioModel(model)
+                            }
+                        }
+                    }
+                }
+
+                if let status = modelManager.downloadStatus(for: model) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if status.isIndeterminate {
+                            ProgressView()
+                        } else {
+                            ProgressView(value: status.fractionCompleted)
+                        }
+                        Text(status.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let error = modelManager.lastDownloadError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
 

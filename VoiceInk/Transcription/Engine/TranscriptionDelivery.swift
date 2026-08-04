@@ -3,14 +3,32 @@ import Foundation
 @MainActor
 final class TranscriptionDelivery {
     struct Actions {
+        let isOperationCurrent: () -> Bool
         let dismiss: () async -> Void
     }
 
+    private let playStopSound: () -> Void
+    private let paste: (String) async -> Void
+
+    init(
+        playStopSound: @escaping () -> Void = { StartStopSound.playStop() },
+        paste: @escaping (String) async -> Void = { text in
+            _ = await CursorPaster.startPasteAtCursor(text).value
+        }
+    ) {
+        self.playStopSound = playStopSound
+        self.paste = paste
+    }
+
     func deliver(text: String, actions: Actions) async {
-        StartStopSound.playStop()
+        guard actions.isOperationCurrent() else { return }
+
+        playStopSound()
         await actions.dismiss()
+        guard actions.isOperationCurrent() else { return }
+
         let pasteInterval = LeanSignpost.signposter.beginInterval("paste")
-        _ = await CursorPaster.startPasteAtCursor(text).value
+        await paste(text)
         LeanSignpost.signposter.endInterval("paste", pasteInterval)
     }
 }

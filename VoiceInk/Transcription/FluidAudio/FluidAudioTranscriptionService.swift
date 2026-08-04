@@ -1,12 +1,60 @@
 import FluidAudio
+import Foundation
+
+enum FluidAudioTranscriptionServiceError: Error, Equatable, LocalizedError {
+    case modelNotDownloaded
+
+    var errorDescription: String? {
+        switch self {
+        case .modelNotDownloaded:
+            return String(localized: "Parakeet V2 is not downloaded. Download it in Settings before dictating.")
+        }
+    }
+}
+
+struct FluidAudioModelStore: Sendable {
+    let modelsExist: @Sendable (AsrModelVersion) -> Bool
+    let loadFromCache: @Sendable (AsrModelVersion) async throws -> AsrModels
+
+    static let localCache = FluidAudioModelStore(
+        modelsExist: { version in
+            let directory = AsrModels.defaultCacheDirectory(for: version)
+            return AsrModels.modelsExist(at: directory, version: version)
+        },
+        loadFromCache: { version in
+            try await AsrModels.loadFromCache(version: version)
+        }
+    )
+}
+
+enum FluidAudioNetworkPolicy {
+    static func prohibitAutomaticDownloads() {
+        DownloadUtils.enforceOffline = true
+    }
+
+    @MainActor
+    static func performExplicitDownload<T>(
+        _ operation: () async throws -> T
+    ) async rethrows -> T {
+        DownloadUtils.enforceOffline = false
+        defer { DownloadUtils.enforceOffline = true }
+        return try await operation()
+    }
+}
 
 actor FluidAudioTranscriptionService {
+    private let modelStore: FluidAudioModelStore
     private var asrManager: AsrManager?
     private var activeVersion: AsrModelVersion?
     private var cachedModels: AsrModels?
     private var loadingTask: (version: AsrModelVersion, task: Task<AsrModels, Error>)?
     var isModelLoaded: Bool {
         asrManager != nil && activeVersion == .v2
+    }
+
+    init(modelStore: FluidAudioModelStore = .localCache) {
+        FluidAudioNetworkPolicy.prohibitAutomaticDownloads()
+        self.modelStore = modelStore
     }
 
     func getOrLoadModels(for version: AsrModelVersion) async throws -> AsrModels {
@@ -18,11 +66,12 @@ actor FluidAudioTranscriptionService {
             return try await existingTask.value
         }
 
-        let task = Task {
-            try await AsrModels.downloadAndLoad(
-                configuration: nil,
-                version: version
-            )
+        guard modelStore.modelsExist(version) else {
+            throw FluidAudioTranscriptionServiceError.modelNotDownloaded
+        }
+
+        let task = Task { [modelStore] in
+            try await modelStore.loadFromCache(version)
         }
         loadingTask = (version, task)
 

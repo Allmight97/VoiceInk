@@ -13,6 +13,9 @@ only the product behavior that work on that roadmap must preserve.
 - Recording uses the selected input device and publishes a live audio meter.
 - The recorder panel supports top-center and bottom-center placement.
 - Live transcription is opt-in and performs work only while recording.
+- Parakeet v2 acquisition is an explicit Settings action. Recording is blocked
+  until the local model exists and while it is downloading. FluidAudio network
+  access is disabled outside that action; dictation never initiates a download.
 - Final transcription runs locally through Parakeet v2.
 - Filler-word filtering and user-defined text replacements shape final output.
 - Text is pasted into the frontmost app. Clipboard restoration remains an

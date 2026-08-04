@@ -3,26 +3,40 @@ import os
 
 @MainActor
 final class TranscriptionPipeline {
-    private let fluidAudioService: FluidAudioTranscriptionService
+    private let transcribe: ([Float]) async throws -> String
     private let delivery: TranscriptionDelivery
+    private let appendLog: (String) -> Void
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "TranscriptionPipeline")
 
     init(fluidAudioService: FluidAudioTranscriptionService, delivery: TranscriptionDelivery) {
-        self.fluidAudioService = fluidAudioService
+        self.transcribe = { samples in
+            try await fluidAudioService.transcribe(samples: samples)
+        }
         self.delivery = delivery
+        self.appendLog = { text in TranscriptionLog.append(text: text) }
+    }
+
+    init(
+        transcribe: @escaping ([Float]) async throws -> String,
+        delivery: TranscriptionDelivery,
+        appendLog: @escaping (String) -> Void
+    ) {
+        self.transcribe = transcribe
+        self.delivery = delivery
+        self.appendLog = appendLog
     }
 
     func run(
         samples: [Float],
-        shouldCancel: () -> Bool,
+        isOperationCurrent: @escaping () -> Bool,
         onDismiss: @escaping () async -> Void
     ) async throws {
-        if shouldCancel() { return }
+        guard isOperationCurrent() else { return }
 
         let transcribeInterval = LeanSignpost.signposter.beginInterval("transcribe")
-        var text = try await fluidAudioService.transcribe(samples: samples)
+        var text = try await transcribe(samples)
         LeanSignpost.signposter.endInterval("transcribe", transcribeInterval)
-        if shouldCancel() { return }
+        guard isOperationCurrent() else { return }
 
         text = TranscriptionOutputFilter.filter(text)
         text = WordReplacementService.shared.applyReplacements(to: text)
@@ -30,14 +44,34 @@ final class TranscriptionPipeline {
 
         guard !text.isEmpty else {
             logger.notice("Skipping empty transcription delivery")
-            await onDismiss()
+            if isOperationCurrent() {
+                await onDismiss()
+            }
             return
         }
 
+        guard isOperationCurrent() else { return }
         await delivery.deliver(
             text: text,
-            actions: TranscriptionDelivery.Actions(dismiss: onDismiss)
+            actions: TranscriptionDelivery.Actions(
+                isOperationCurrent: isOperationCurrent,
+                dismiss: {
+                    if isOperationCurrent() {
+                        await onDismiss()
+                    }
+                }
+            )
         )
-        TranscriptionLog.append(text: text)
+        if isOperationCurrent() {
+            appendLog(text)
+        }
+    }
+
+    static func isOperationCurrent(
+        operationID: UUID,
+        activeOperationID: UUID?,
+        isCancelled: Bool
+    ) -> Bool {
+        activeOperationID == operationID && !isCancelled
     }
 }

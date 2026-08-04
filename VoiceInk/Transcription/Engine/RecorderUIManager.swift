@@ -63,7 +63,7 @@ final class RecorderUIManager: ObservableObject, RecorderPanelPresenting {
                 },
                 onCloseTapped: { [weak self] in
                     Task { @MainActor in
-                        await self?.dismissRecorderPanel()
+                        await self?.closeRecorderPanel()
                     }
                 }
             )
@@ -98,6 +98,26 @@ final class RecorderUIManager: ObservableObject, RecorderPanelPresenting {
     func dismissRecorderPanel() async {
         hideRecorderPanel()
         isRecorderPanelVisible = false
+    }
+
+    private func closeRecorderPanel() async {
+        await Self.performCloseAction(
+            recordingState: engine?.recordingState ?? .idle,
+            cancel: { [weak engine] in await engine?.cancelRecording() },
+            dismiss: { [weak self] in await self?.dismissRecorderPanel() }
+        )
+    }
+
+    static func performCloseAction(
+        recordingState: RecordingState,
+        cancel: () async -> Void,
+        dismiss: () async -> Void
+    ) async {
+        if recordingState == .idle {
+            await dismiss()
+        } else {
+            await cancel()
+        }
     }
 
     func resetOnLaunch() async {

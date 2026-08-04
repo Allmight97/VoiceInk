@@ -19,6 +19,7 @@ struct FluidAudioDownloadStatus {
 final class FluidAudioModelManager: ObservableObject {
     @Published private var downloadStatuses: [String: FluidAudioDownloadStatus] = [:]
     @Published private var modelStateRevision = 0
+    @Published private(set) var lastDownloadError: String?
     private var activeDownloadIDs: [String: UUID] = [:]
 
     var onModelDeleted: ((String) -> Void)?
@@ -57,6 +58,7 @@ final class FluidAudioModelManager: ObservableObject {
 
         let modelName = model.name
         let downloadID = UUID()
+        lastDownloadError = nil
         activeDownloadIDs[modelName] = downloadID
         downloadStatuses[modelName] = FluidAudioDownloadStatus(
             fractionCompleted: 0.0,
@@ -74,13 +76,20 @@ final class FluidAudioModelManager: ObservableObject {
         }
 
         do {
-            _ = try await AsrModels.downloadAndLoad(
-                version: .v2,
-                progressHandler: progressHandler
-            )
+            _ = try await FluidAudioNetworkPolicy.performExplicitDownload {
+                try await AsrModels.downloadAndLoad(
+                    version: .v2,
+                    progressHandler: progressHandler
+                )
+            }
             modelStateRevision += 1
         } catch {
+            lastDownloadError = error.localizedDescription
             logger.error("FluidAudio download failed for \(modelName, privacy: .public): \(error, privacy: .public)")
+            NotificationManager.shared.showNotification(
+                title: String(localized: "Parakeet V2 download failed"),
+                type: .error
+            )
         }
     }
 
