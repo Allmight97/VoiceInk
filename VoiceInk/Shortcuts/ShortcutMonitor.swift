@@ -19,9 +19,9 @@ final class ShortcutMonitor {
 
     private var shortcuts: [ShortcutAction: ShortcutState] = [:]
     private var interruptibleActions: Set<ShortcutAction> = []
-    private var onKeyDown: ((ShortcutAction, TimeInterval) -> Void)?
-    private var onKeyUp: ((ShortcutAction, TimeInterval) -> Void)?
-    private var onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)?
+    private var onKeyDown: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
+    private var onKeyUp: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
+    private var onShortcutInterrupted: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)?
     private var eventTap: CFMachPort?
     private var eventTapRunLoopSource: CFRunLoopSource?
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "ShortcutMonitor")
@@ -36,9 +36,9 @@ final class ShortcutMonitor {
     func start(
         shortcuts: [ShortcutAction: Shortcut],
         interruptibleActions: Set<ShortcutAction> = [],
-        onKeyDown: @escaping (ShortcutAction, TimeInterval) -> Void,
-        onKeyUp: @escaping (ShortcutAction, TimeInterval) -> Void,
-        onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)? = nil
+        onKeyDown: @escaping @MainActor @Sendable (ShortcutAction, TimeInterval) -> Void,
+        onKeyUp: @escaping @MainActor @Sendable (ShortcutAction, TimeInterval) -> Void,
+        onShortcutInterrupted: (@MainActor @Sendable (ShortcutAction, TimeInterval) -> Void)? = nil
     ) -> Bool {
         stop()
 
@@ -100,7 +100,7 @@ final class ShortcutMonitor {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: Self.eventMask,
+            eventsOfInterest: minimalEventMask(),
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -330,12 +330,21 @@ final class ShortcutMonitor {
         }
     }
 
-    private static let eventMask: CGEventMask = [
-        CGEventType.keyDown,
-        CGEventType.keyUp,
-        CGEventType.flagsChanged
-    ].reduce(CGEventMask(0)) { mask, type in
-        mask | (CGEventMask(1) << Int(type.rawValue))
+    /// Only subscribe to the event types the registered shortcuts can match:
+    /// modifier-only shortcuts need just flagsChanged; key shortcuts need
+    /// keyDown + keyUp (release drives push-to-talk and state reset).
+    private func minimalEventMask() -> CGEventMask {
+        var types: [CGEventType] = []
+        let kinds = Set(shortcuts.values.map(\.shortcut.kind))
+        if kinds.contains(.key) {
+            types.append(contentsOf: [.keyDown, .keyUp])
+        }
+        if kinds.contains(.modifierOnly) {
+            types.append(.flagsChanged)
+        }
+        return types.reduce(CGEventMask(0)) { mask, type in
+            mask | (CGEventMask(1) << Int(type.rawValue))
+        }
     }
 }
 

@@ -66,14 +66,6 @@ struct Shortcut: Codable, Equatable {
         .modifierOnly(keyCode: UInt16(kVK_RightCommand), modifierFlags: [.command])
     }
 
-    static func fromLegacyShortcut(_ shortcut: LegacyKeyboardShortcut) -> Self {
-        Self(
-            kind: .key,
-            keyCode: UInt16(shortcut.carbonKeyCode),
-            modifierFlags: .shortcutFlags(fromCarbonModifiers: shortcut.carbonModifiers)
-        )
-    }
-
     func conflicts(with other: Shortcut) -> Bool {
         kind == other.kind &&
             keyCode == other.keyCode &&

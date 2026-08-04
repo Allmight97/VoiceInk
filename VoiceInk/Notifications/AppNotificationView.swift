@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct AppNotificationView: View {
     let title: String
     let type: NotificationType
@@ -146,11 +147,13 @@ struct AppNotificationView: View {
         let stepDecrement = 1.0 / totalSteps
         
         timer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { _ in
-            if progress > 0 {
-                progress = max(0, progress - stepDecrement)
-            } else {
-                timer?.invalidate()
-                timer = nil
+            MainActor.assumeIsolated {
+                if progress > 0 {
+                    progress = max(0, progress - stepDecrement)
+                } else {
+                    timer?.invalidate()
+                    timer = nil
+                }
             }
         }
     }

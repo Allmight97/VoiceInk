@@ -1,15 +1,21 @@
 import SwiftUI
 import AppKit
 
-class NotificationManager {
+@MainActor
+final class NotificationManager {
     static let shared = NotificationManager()
 
     private var notificationWindow: NSPanel?
     private var dismissTimer: Timer?
+    private var notificationID: UUID?
 
     private init() {}
 
-    @MainActor
+    /// A stale timer or close callback must not dismiss a newer notification.
+    static func shouldDismiss(notificationID: UUID, currentNotificationID: UUID?) -> Bool {
+        notificationID == currentNotificationID
+    }
+
     func showNotification(
         title: String,
         type: AppNotificationView.NotificationType,
@@ -17,6 +23,8 @@ class NotificationManager {
         onTap: (() -> Void)? = nil,
         actionButton: (label: String, action: () -> Void)? = nil
     ) {
+        let notificationID = UUID()
+        self.notificationID = notificationID
         dismissTimer?.invalidate()
         dismissTimer = nil
 
@@ -25,9 +33,8 @@ class NotificationManager {
             notificationWindow = nil
         }
         
-        // Play esc sound for error notifications
         if type == .error {
-            SoundManager.shared.playEscSound()
+            StartStopSound.playError()
         }
         
         let notificationView = AppNotificationView(
@@ -36,7 +43,7 @@ class NotificationManager {
             duration: duration,
             onClose: { [weak self] in
                 Task { @MainActor in
-                    self?.dismissNotification()
+                    self?.dismissNotification(for: notificationID)
                 }
             },
             onTap: onTap,
@@ -76,11 +83,13 @@ class NotificationManager {
             withTimeInterval: duration,
             repeats: false
         ) { [weak self] _ in
-            self?.dismissNotification()
+            Task { @MainActor in
+                self?.dismissNotification(for: notificationID)
+            }
         }
+
     }
 
-    @MainActor
     private func positionWindow(_ window: NSWindow) {
         let activeScreen = NSApp.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens[0]
         let screenRect = activeScreen.visibleFrame
@@ -98,11 +107,20 @@ class NotificationManager {
         window.setFrameOrigin(NSPoint(x: notificationX, y: notificationY))
     }
 
-    @MainActor
     func dismissNotification() {
+        guard let notificationID else { return }
+        dismissNotification(for: notificationID)
+    }
+
+    private func dismissNotification(for notificationID: UUID) {
+        guard Self.shouldDismiss(
+            notificationID: notificationID,
+            currentNotificationID: self.notificationID
+        ) else { return }
         guard let window = notificationWindow else { return }
         
         notificationWindow = nil
+        self.notificationID = nil
         
         dismissTimer?.invalidate()
         dismissTimer = nil
@@ -112,8 +130,10 @@ class NotificationManager {
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             window.animator().alphaValue = 0
         }, completionHandler: {
-            window.close()
+            MainActor.assumeIsolated {
+                window.close()
+            }
 
         })
     }
-} 
+}

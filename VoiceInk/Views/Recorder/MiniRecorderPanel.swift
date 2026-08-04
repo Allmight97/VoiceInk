@@ -31,20 +31,26 @@ class MiniRecorderPanel: NSPanel {
     }
     
     static func calculateWindowMetrics() -> NSRect {
-        let width: CGFloat = 540
-        let height: CGFloat = 430
+        let width: CGFloat = 320
+        let height: CGFloat = 120
 
         guard let screen = NSScreen.main else {
             return NSRect(x: 0, y: 0, width: width, height: height)
         }
 
-        // Host stays large enough for assistant output; SwiftUI controls the visible mini width.
         let padding: CGFloat = 24
 
         let visibleFrame = screen.visibleFrame
         let centerX = visibleFrame.midX
         let xPosition = centerX - (width / 2)
-        let yPosition = visibleFrame.minY + padding
+
+        let yPosition: CGFloat
+        switch RecorderPanelPosition.current {
+        case .bottomCenter:
+            yPosition = visibleFrame.minY + padding
+        case .topCenter:
+            yPosition = visibleFrame.maxY - height - padding
+        }
 
         return NSRect(
             x: xPosition,

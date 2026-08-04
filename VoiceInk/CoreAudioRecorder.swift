@@ -5,6 +5,42 @@ import AVFoundation
 import Atomics
 import os
 
+/// Pure byte-count contracts shared by Core Audio property readers.
+enum CoreAudioByteContract {
+    static func hasExactSize(_ returnedBytes: UInt32, expectedBytes: Int) -> Bool {
+        guard expectedBytes >= 0, expectedBytes <= Int(UInt32.max) else {
+            return false
+        }
+        return returnedBytes == UInt32(expectedBytes)
+    }
+
+    static func elementCount(returnedBytes: UInt32, elementStride: Int) -> Int? {
+        guard elementStride > 0, elementStride <= Int(UInt32.max) else {
+            return nil
+        }
+        let stride = UInt32(elementStride)
+        guard returnedBytes % stride == 0 else { return nil }
+        return Int(returnedBytes / stride)
+    }
+
+    static func variableStructByteCount(
+        elementCount: Int,
+        minimumHeaderBytes: Int,
+        elementStride: Int
+    ) -> Int? {
+        guard elementCount > 0,
+              minimumHeaderBytes > 0,
+              elementStride > 0 else {
+            return nil
+        }
+        let extraElements = elementCount - 1
+        guard extraElements <= (Int.max - minimumHeaderBytes) / elementStride else {
+            return nil
+        }
+        return minimumHeaderBytes + extraElements * elementStride
+    }
+}
+
 // MARK: - Core Audio Recorder (AUHAL-based, does not change system default device)
 final class CoreAudioRecorder: @unchecked Sendable {
     private final class InputBufferSlot: @unchecked Sendable {
@@ -78,8 +114,8 @@ final class CoreAudioRecorder: @unchecked Sendable {
 
     /// Called from the recorder processing queue with raw PCM data (16-bit, 16kHz, mono) for streaming.
     private let audioChunkLock = NSLock()
-    private var _onAudioChunk: ((_ data: Data) -> Void)?
-    var onAudioChunk: ((_ data: Data) -> Void)? {
+    private var _onAudioChunk: (@Sendable (_ data: Data) -> Void)?
+    var onAudioChunk: (@Sendable (_ data: Data) -> Void)? {
         get {
             audioChunkLock.lock()
             defer { audioChunkLock.unlock() }
@@ -280,6 +316,12 @@ final class CoreAudioRecorder: @unchecked Sendable {
         if status != noErr {
             throw CoreAudioRecorderError.failedToGetDeviceFormat(status: status)
         }
+        guard CoreAudioByteContract.hasExactSize(
+            formatSize,
+            expectedBytes: MemoryLayout<AudioStreamBasicDescription>.size
+        ) else {
+            throw CoreAudioRecorderError.failedToGetDeviceFormat(status: kAudio_ParamError)
+        }
 
         // Step 5: Configure callback format for new device
         var callbackFormat = AudioStreamBasicDescription(
@@ -433,6 +475,13 @@ final class CoreAudioRecorder: @unchecked Sendable {
         if status != noErr {
             logger.error("Failed to get device format: \(status, privacy: .public)")
             throw CoreAudioRecorderError.failedToGetDeviceFormat(status: status)
+        }
+        guard CoreAudioByteContract.hasExactSize(
+            formatSize,
+            expectedBytes: MemoryLayout<AudioStreamBasicDescription>.size
+        ) else {
+            logger.error("Invalid device format returned by AudioUnit")
+            throw CoreAudioRecorderError.failedToGetDeviceFormat(status: kAudio_ParamError)
         }
 
         // Configure output format: 16kHz, mono, PCM Int16
@@ -1037,8 +1086,15 @@ final class CoreAudioRecorder: @unchecked Sendable {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var propertySize = UInt32(MemoryLayout<CFString>.size)
-        var property: CFString?
+        let storageSize = MemoryLayout<UnsafeRawPointer?>.size
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: storageSize,
+            alignment: MemoryLayout<UnsafeRawPointer?>.alignment
+        )
+        defer { storage.deallocate() }
+        let emptyProperty: UnsafeRawPointer? = nil
+        storage.storeBytes(of: emptyProperty, as: UnsafeRawPointer?.self)
+        var propertySize = UInt32(storageSize)
 
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -1046,13 +1102,16 @@ final class CoreAudioRecorder: @unchecked Sendable {
             0,
             nil,
             &propertySize,
-            &property
+            storage
         )
 
-        if status == noErr, let cfString = property {
-            return cfString as String
+        guard status == noErr,
+              CoreAudioByteContract.hasExactSize(propertySize, expectedBytes: storageSize),
+              let propertyRef = storage.load(as: UnsafeRawPointer?.self) else {
+            return nil
         }
-        return nil
+        let cfString = Unmanaged<CFString>.fromOpaque(propertyRef).takeRetainedValue()
+        return cfString as String
     }
 
     private func getTransportType(deviceID: AudioDeviceID) -> String {
@@ -1075,6 +1134,12 @@ final class CoreAudioRecorder: @unchecked Sendable {
         )
 
         if status != noErr {
+            return "Unknown"
+        }
+        guard CoreAudioByteContract.hasExactSize(
+            propertySize,
+            expectedBytes: MemoryLayout<UInt32>.size
+        ) else {
             return "Unknown"
         }
 
@@ -1127,7 +1192,15 @@ final class CoreAudioRecorder: @unchecked Sendable {
             &bufferSize
         )
 
-        return status == noErr ? bufferSize : nil
+        guard status == noErr,
+              CoreAudioByteContract.hasExactSize(
+                  propertySize,
+                  expectedBytes: MemoryLayout<UInt32>.size
+              ),
+              bufferSize > 0 else {
+            return nil
+        }
+        return bufferSize
     }
 
     /// Checks if a device is currently available using Apple's kAudioDevicePropertyDeviceIsAlive
@@ -1150,7 +1223,12 @@ final class CoreAudioRecorder: @unchecked Sendable {
             &isAlive
         )
 
-        return status == noErr && isAlive == 1
+        return status == noErr
+            && CoreAudioByteContract.hasExactSize(
+                propertySize,
+                expectedBytes: MemoryLayout<UInt32>.size
+            )
+            && isAlive != 0
     }
 }
 

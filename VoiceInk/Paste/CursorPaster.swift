@@ -94,6 +94,7 @@ class CursorPaster {
         }
     }
 
+    @MainActor
     private static func scheduleClipboardRestore(
         _ savedContents: ClipboardSnapshot,
         expectedText: String,
@@ -140,6 +141,7 @@ class CursorPaster {
 
     // "X – QWERTY ⌘" layouts remap to QWERTY when Command is held, so keystroke "v" resolves
     // the wrong key code. key code 9 (physical V) bypasses layout translation for those layouts.
+    @MainActor
     private static func makeScript(_ source: String) -> NSAppleScript? {
         let script = NSAppleScript(source: source)
         var error: NSDictionary?
@@ -147,7 +149,9 @@ class CursorPaster {
         return script
     }
 
+    @MainActor
     private static let pasteScriptKeystroke = makeScript("tell application \"System Events\" to keystroke \"v\" using command down")
+    @MainActor
     private static let pasteScriptKeyCode   = makeScript("tell application \"System Events\" to key code 9 using command down")
 
     @MainActor
@@ -213,28 +217,4 @@ class CursorPaster {
         try? await Task.sleep(nanoseconds: nanoseconds)
     }
 
-    // MARK: - Auto Send Keys
-
-    static func performAutoSend(_ key: AutoSendKey) {
-        guard key.isEnabled else { return }
-        guard AXIsProcessTrusted() else { return }
-
-        let source = CGEventSource(stateID: .privateState)
-        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)
-        let enterUp   = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
-
-        switch key {
-        case .none: return
-        case .enter: break
-        case .shiftEnter:
-            enterDown?.flags = .maskShift
-            enterUp?.flags   = .maskShift
-        case .commandEnter:
-            enterDown?.flags = .maskCommand
-            enterUp?.flags   = .maskCommand
-        }
-
-        enterDown?.post(tap: .cghidEventTap)
-        enterUp?.post(tap: .cghidEventTap)
-    }
 }

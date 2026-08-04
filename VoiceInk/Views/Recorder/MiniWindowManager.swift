@@ -1,8 +1,8 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @MainActor
-class MiniWindowManager {
+final class MiniRecorderWindowController {
     private var windowController: NSWindowController?
     private var panel: MiniRecorderPanel?
 
@@ -11,20 +11,16 @@ class MiniWindowManager {
     init(
         engine: VoiceInkEngine,
         recorder: Recorder,
-        assistantSession: AssistantSession,
         onRecordButtonTapped: @escaping () -> Void,
-        onCloseTapped: @escaping () -> Void,
-        onAssistantFollowUp: @escaping (String) -> Void
+        onCloseTapped: @escaping () -> Void
     ) {
         self.makeView = {
             AnyView(
                 MiniRecorderView(
                     stateProvider: engine,
                     recorder: recorder,
-                    assistantSession: assistantSession,
                     onRecordButtonTapped: onRecordButtonTapped,
-                    onCloseTapped: onCloseTapped,
-                    onAssistantFollowUp: onAssistantFollowUp
+                    onCloseTapped: onCloseTapped
                 )
             )
         }

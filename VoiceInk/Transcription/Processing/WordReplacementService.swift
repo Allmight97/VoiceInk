@@ -1,32 +1,25 @@
 import Foundation
-import SwiftData
 
-class WordReplacementService {
+@MainActor
+final class WordReplacementService {
     static let shared = WordReplacementService()
 
     private init() {}
 
-    func applyReplacements(to text: String, using context: ModelContext) -> String {
-        let descriptor = FetchDescriptor<WordReplacement>(
-            predicate: #Predicate { $0.isEnabled }
-        )
-
-        guard let replacements = try? context.fetch(descriptor), !replacements.isEmpty else {
-            return text // No replacements to apply
+    func applyReplacements(to text: String) -> String {
+        guard UserDefaults.standard.bool(forKey: AppDefaults.wordReplacementEnabled),
+              let replacements = UserDefaults.standard.dictionary(forKey: AppDefaults.wordReplacements) as? [String: String],
+              !replacements.isEmpty else {
+            return text
         }
 
         var modifiedText = text
 
-        // Longest-first so specific triggers match before shorter overlapping ones
         let sortedReplacements = replacements.sorted {
-            $0.originalText.count > $1.originalText.count
+            $0.key.count > $1.key.count
         }
 
-        // Apply replacements (case-insensitive)
-        for replacement in sortedReplacements {
-            let originalGroup = replacement.originalText
-            let replacementText = replacement.replacementText
-
+        for (originalGroup, replacementText) in sortedReplacements {
             let variants = originalGroup
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -34,10 +27,7 @@ class WordReplacementService {
                 .sorted { $0.count > $1.count }
 
             for original in variants {
-                let usesBoundaries = usesWordBoundaries(for: original)
-
-                if usesBoundaries {
-                    // Lookarounds instead of \b so punctuation acts as a word boundary
+                if usesWordBoundaries(for: original) {
                     let escaped = NSRegularExpression.escapedPattern(for: original)
                     let pattern = "(?<![a-zA-Z0-9])\(escaped)(?![a-zA-Z0-9])"
                     if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
@@ -50,8 +40,11 @@ class WordReplacementService {
                         )
                     }
                 } else {
-                    // Fallback substring replace for non-spaced scripts
-                    modifiedText = modifiedText.replacingOccurrences(of: original, with: replacementText, options: .caseInsensitive)
+                    modifiedText = modifiedText.replacingOccurrences(
+                        of: original,
+                        with: replacementText,
+                        options: .caseInsensitive
+                    )
                 }
             }
         }
@@ -60,20 +53,17 @@ class WordReplacementService {
     }
 
     private func usesWordBoundaries(for text: String) -> Bool {
-        // Returns false for languages without spaces (CJK, Thai), true for spaced languages
         let nonSpacedScripts: [ClosedRange<UInt32>] = [
-            0x3040...0x309F, // Hiragana
-            0x30A0...0x30FF, // Katakana
-            0x4E00...0x9FFF, // CJK Unified Ideographs
-            0xAC00...0xD7AF, // Hangul Syllables
-            0x0E00...0x0E7F, // Thai
+            0x3040...0x309F,
+            0x30A0...0x30FF,
+            0x4E00...0x9FFF,
+            0xAC00...0xD7AF,
+            0x0E00...0x0E7F,
         ]
 
         for scalar in text.unicodeScalars {
-            for range in nonSpacedScripts {
-                if range.contains(scalar.value) {
-                    return false
-                }
+            for range in nonSpacedScripts where range.contains(scalar.value) {
+                return false
             }
         }
 
