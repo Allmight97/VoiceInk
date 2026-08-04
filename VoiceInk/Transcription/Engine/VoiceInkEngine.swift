@@ -20,6 +20,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     weak var recorderUIManager: RecorderPanelPresenting?
 
     private let fluidAudioModelManager: FluidAudioModelManager
+    private let appleSpeechAssetManager: AppleSpeechAssetManager
     private let backendRouter: TranscriptionBackendRouter
     private let selectionStorage: any TranscriptionSelectionStorage
     private let pipeline: TranscriptionPipeline
@@ -42,12 +43,14 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     init(
         recorder: Recorder,
         fluidAudioModelManager: FluidAudioModelManager,
+        appleSpeechAssetManager: AppleSpeechAssetManager,
         backendRouter: TranscriptionBackendRouter,
         selectionStorage: any TranscriptionSelectionStorage,
         pipeline: TranscriptionPipeline
     ) {
         self.recorder = recorder
         self.fluidAudioModelManager = fluidAudioModelManager
+        self.appleSpeechAssetManager = appleSpeechAssetManager
         self.backendRouter = backendRouter
         self.selectionStorage = selectionStorage
         self.pipeline = pipeline
@@ -84,6 +87,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
     func cancelRecording() async {
         shouldCancelRecording = true
+        let backend = activeBackend
         activeRecordingID = nil
         activeOperationID = nil
         await recorder.stopRecording()
@@ -93,6 +97,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         sampleBuffer = nil
         activeBackend = nil
         activeBackendSnapshot = nil
+        await backend?.cleanup()
         removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         partialTranscript = ""
@@ -102,6 +107,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
 
     func resetRecordingSession() async {
         shouldCancelRecording = false
+        let backend = activeBackend
         activeRecordingID = nil
         activeOperationID = nil
         partialTranscript = ""
@@ -112,6 +118,7 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         sampleBuffer = nil
         activeBackend = nil
         activeBackendSnapshot = nil
+        await backend?.cleanup()
         removeRecordingUnlessKept(recordedFile)
         recordedFile = nil
         recordingState = .idle
@@ -139,26 +146,9 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
             return
         }
 
-        switch Self.modelRecordingGate(
-            isDownloading: fluidAudioModelManager.isFluidAudioModelDownloading(model),
-            isDownloaded: fluidAudioModelManager.isFluidAudioModelDownloaded(model)
-        ) {
-        case .downloading:
-            NotificationManager.shared.showNotification(
-                title: String(localized: "Wait for the Parakeet v2 download to finish"),
-                type: .warning
-            )
+        guard await selectedBackendIsAvailable(backendSnapshot) else {
             await recorderUIManager?.dismissRecorderPanel()
             return
-        case .missing:
-            NotificationManager.shared.showNotification(
-                title: String(localized: "Download Parakeet v2 in Settings to start recording"),
-                type: .warning
-            )
-            await recorderUIManager?.dismissRecorderPanel()
-            return
-        case .ready:
-            break
         }
 
         guard await PermissionAlert.ensureMicrophoneAccess(),
@@ -238,8 +228,6 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         recordingState = .transcribing
         await recorder.stopRecording()
         await finishPartialTranscription()
-        activeBackend = nil
-        activeBackendSnapshot = nil
         if let recordInterval {
             LeanSignpost.signposter.endInterval("record", recordInterval)
             self.recordInterval = nil
@@ -309,6 +297,8 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
         }
 
         guard isOperationCurrent(operationID) else { return }
+        activeBackend = nil
+        activeBackendSnapshot = nil
         shouldCancelRecording = false
         activeOperationID = nil
         if recordingState == .transcribing {
@@ -327,6 +317,53 @@ final class VoiceInkEngine: NSObject, ObservableObject, RecorderStateProvider {
     static func modelRecordingGate(isDownloading: Bool, isDownloaded: Bool) -> ModelRecordingGate {
         if isDownloading { return .downloading }
         return isDownloaded ? .ready : .missing
+    }
+
+    private func selectedBackendIsAvailable(_ snapshot: TranscriptionBackendSnapshot) async -> Bool {
+        switch snapshot.backend {
+        case .parakeetV2:
+            switch Self.modelRecordingGate(
+                isDownloading: fluidAudioModelManager.isFluidAudioModelDownloading(model),
+                isDownloaded: fluidAudioModelManager.isFluidAudioModelDownloaded(model)
+            ) {
+            case .ready:
+                return true
+            case .downloading:
+                showBackendWarning("Wait for the Parakeet v2 download to finish")
+            case .missing:
+                showBackendWarning("Download Parakeet v2 in Settings to start recording")
+            }
+
+        case .appleSpeech:
+            guard let locale = snapshot.configuration.locale else {
+                showBackendWarning("Choose an Apple Speech language in Settings")
+                return false
+            }
+
+            switch await appleSpeechAssetManager.refresh(for: locale) {
+            case .ready:
+                return true
+            case .requested, .downloading:
+                showBackendWarning("Wait for the Apple Speech language download to finish")
+            case .unsupported:
+                showBackendWarning("This Apple Speech language is not supported")
+            case .reservationLimit:
+                showBackendWarning("Release an unused Apple Speech language reservation in Settings")
+            case .absent, .reclaimed:
+                showBackendWarning("Download the selected Apple Speech language in Settings")
+            case .failed:
+                showBackendWarning("Apple Speech is unavailable; check Settings and try again")
+            }
+        }
+
+        return false
+    }
+
+    private func showBackendWarning(_ title: LocalizedStringResource) {
+        NotificationManager.shared.showNotification(
+            title: String(localized: title),
+            type: .warning
+        )
     }
 
     /// Opt-in live transcript: while recording, periodically transcribe a

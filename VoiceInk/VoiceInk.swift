@@ -11,6 +11,7 @@ struct VoiceInkApp: App {
     @StateObject private var engine: VoiceInkEngine
     @StateObject private var recorderUIManager: RecorderUIManager
     @StateObject private var recordingShortcutManager: RecordingShortcutManager
+    private let appleSpeechAssetManager: AppleSpeechAssetManager
 
     init() {
         URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)
@@ -19,13 +20,19 @@ struct VoiceInkApp: App {
         let recorder = Recorder()
         let fluidAudioModelManager = FluidAudioModelManager()
         let fluidAudioService = FluidAudioTranscriptionService()
-        let backendRouter = TranscriptionBackendRouter(parakeetV2: fluidAudioService)
+        let appleSpeechAssetManager = AppleSpeechAssetManager()
+        let appleSpeechService = AppleSpeechTranscriptionService(assets: appleSpeechAssetManager)
+        let backendRouter = TranscriptionBackendRouter(
+            parakeetV2: fluidAudioService,
+            appleSpeech: appleSpeechService
+        )
         let selectionStorage = UserDefaultsTranscriptionSelectionStorage()
         let delivery = TranscriptionDelivery()
         let pipeline = TranscriptionPipeline(delivery: delivery)
         let engine = VoiceInkEngine(
             recorder: recorder,
             fluidAudioModelManager: fluidAudioModelManager,
+            appleSpeechAssetManager: appleSpeechAssetManager,
             backendRouter: backendRouter,
             selectionStorage: selectionStorage,
             pipeline: pipeline
@@ -44,6 +51,7 @@ struct VoiceInkApp: App {
         _engine = StateObject(wrappedValue: engine)
         _recorderUIManager = StateObject(wrappedValue: recorderUIManager)
         _recordingShortcutManager = StateObject(wrappedValue: recordingShortcutManager)
+        self.appleSpeechAssetManager = appleSpeechAssetManager
 
         Task { @MainActor in
             await recorderUIManager.resetOnLaunch()
