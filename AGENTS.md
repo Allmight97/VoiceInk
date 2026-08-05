@@ -45,9 +45,9 @@ runtime proof. Keep `VoiceInkTests` (Swift Testing) and `VoiceInkUITests`
   it owns `.local-build` and the local entitlements path.
 - After any `VoiceInk.xcodeproj/project.pbxproj` edit, run
   `plutil -lint VoiceInk.xcodeproj/project.pbxproj`.
-- `FluidAudio` and `swift-atomics` are the current package dependencies, not
-  permanent requirements. Add no package without a named retained behavior;
-  remove a current package when the migration proves it unnecessary.
+- `FluidAudio` is the sole current Swift package dependency, not a permanent
+  requirement. Add no package without a named retained behavior; remove a
+  current package when the migration proves it unnecessary.
 
 Keep roadmap state, issue links, session history, and agent/model routing out
 of this file.
