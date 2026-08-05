@@ -5,6 +5,8 @@ VoiceInk fork. It is derived from VoiceInk and remains licensed under GPL-3.0.
 
 ## Unreleased
 
+## 1.1.1 — Native cleanup
+
 - Show the bundle-derived app version and changelog link in General settings,
   with a standard About VoiceInk panel available from the menu bar.
 - Rebuild the localization catalogs from the retained product surface while
