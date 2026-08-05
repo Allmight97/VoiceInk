@@ -7,6 +7,12 @@ VoiceInk fork. It is derived from VoiceInk and remains licensed under GPL-3.0.
 
 - Show the bundle-derived app version and changelog link in General settings,
   with a standard About VoiceInk panel available from the menu bar.
+- Rebuild the localization catalogs from the retained product surface while
+  preserving valid German and Simplified Chinese translations.
+- Remove a duplicate UI launch test and the recorder's unreachable bounded
+  audio-drain branch.
+- Replace the swift-atomics package with macOS 27's native Synchronization
+  atomics while preserving the recorder's realtime ordering contracts.
 
 ## 1.1.0 — Apple Speech local backend
 
